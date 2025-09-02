@@ -1,4 +1,4 @@
-[gd_scene load_steps=29 format=3 uid="uid://crejfo36g5bip"]
+[gd_scene load_steps=30 format=3 uid="uid://crejfo36g5bip"]
 
 [ext_resource type="Script" uid="uid://6wbbc364xejy" path="res://video_streamer.gd" id="1_ig7tw"]
 [ext_resource type="Texture2D" uid="uid://n7xqvr4frt03" path="res://assets/cartdl/cartdl_01.png" id="5_b1qrp"]
@@ -20,6 +20,7 @@
 [ext_resource type="PackedScene" uid="uid://c5k0xmbhdlmaw" path="res://key.tscn" id="20_82xsv"]
 [ext_resource type="Texture2D" uid="uid://6g8vp7jto4p1" path="res://assets/cartdl/cartdl_16.png" id="20_abqjc"]
 [ext_resource type="FontFile" uid="uid://c2jlc3nt8y38q" path="res://assets/font/atlas-0.png" id="20_d13ii"]
+[ext_resource type="Texture2D" uid="uid://shpx84pg158k" path="res://assets/pico8_logo_vector.png" id="23_1u8w0"]
 [ext_resource type="Script" uid="uid://3yarkysfetgu" path="res://kb_toggler.gd" id="37_come4"]
 [ext_resource type="PackedScene" uid="uid://bgklhpsaac82q" path="res://omnipad.tscn" id="41_0cp0l"]
 [ext_resource type="Script" uid="uid://c7rts7fcblaav" path="res://run_pico_cmd.gd" id="41_4lmeg"]
@@ -194,9 +195,9 @@ offset = Vector2(256, 256)
 enabled = false
 
 [node name="HBoxContainer" type="HBoxContainer" parent="Arranger"]
-offset_top = 146.0
+offset_top = 161.0
 offset_right = 128.0
-offset_bottom = 159.0
+offset_bottom = 174.0
 
 [node name="Keyboard Btn" type="Button" parent="Arranger/HBoxContainer"]
 layout_mode = 2
@@ -220,6 +221,7 @@ metadata/_edit_use_anchors_ = true
 position = Vector2(0, 300)
 
 [node name="kb_pocketchip" type="Node2D" parent="Arranger/kbanchor"]
+visible = false
 position = Vector2(0, -125)
 script = ExtResource("37_come4")
 
@@ -258,10 +260,10 @@ special_behaviour = 1
 metadata/_edit_use_anchors_ = true
 
 [node name="Key50" parent="Arranger/kbanchor/kb_pocketchip" instance=ExtResource("20_82xsv")]
-offset_left = 22.0
-offset_top = 27.0
-offset_right = 28.0
-offset_bottom = 34.0
+offset_left = 23.0
+offset_top = 28.0
+offset_right = 29.0
+offset_bottom = 35.0
 mouse_filter = 0
 key_id = "Down"
 cap_type = 1
@@ -271,10 +273,10 @@ unicode = false
 metadata/_edit_use_anchors_ = true
 
 [node name="Key52" parent="Arranger/kbanchor/kb_pocketchip" instance=ExtResource("20_82xsv")]
-offset_left = 12.0
-offset_top = 14.0
-offset_right = 18.0
-offset_bottom = 21.0
+offset_left = 13.0
+offset_top = 15.0
+offset_right = 19.0
+offset_bottom = 22.0
 mouse_filter = 0
 cap_type = 1
 cap_text = "03"
@@ -283,10 +285,9 @@ unicode = false
 metadata/_edit_use_anchors_ = true
 
 [node name="Key53" parent="Arranger/kbanchor/kb_pocketchip" instance=ExtResource("20_82xsv")]
-offset_left = 22.0
-offset_top = 1.0
-offset_right = 28.0
-offset_bottom = 8.0
+offset_left = 23.0
+offset_top = 2.0
+offset_right = 29.0
 mouse_filter = 0
 key_id = "Up"
 cap_type = 1
@@ -296,10 +297,10 @@ unicode = false
 metadata/_edit_use_anchors_ = true
 
 [node name="Key51" parent="Arranger/kbanchor/kb_pocketchip" instance=ExtResource("20_82xsv")]
-offset_left = 32.0
-offset_top = 14.0
-offset_right = 38.0
-offset_bottom = 21.0
+offset_left = 33.0
+offset_top = 15.0
+offset_right = 39.0
+offset_bottom = 22.0
 mouse_filter = 0
 key_id = "Right"
 cap_type = 1
@@ -918,16 +919,20 @@ shift_unicode_override = "~"
 metadata/_edit_use_anchors_ = true
 
 [node name="kb_gaming" type="Node2D" parent="Arranger/kbanchor"]
-visible = false
-position = Vector2(0, -70)
+position = Vector2(0, -126)
 script = ExtResource("37_come4")
 type = 0
 
+[node name="Pico8LogoVector" type="Sprite2D" parent="Arranger/kbanchor/kb_gaming"]
+position = Vector2(65, 93)
+scale = Vector2(0.21, 0.21)
+texture = ExtResource("23_1u8w0")
+
 [node name="esc" parent="Arranger/kbanchor/kb_gaming" instance=ExtResource("20_82xsv")]
 offset_left = 77.0
-offset_top = 5.0
+offset_top = 4.0
 offset_right = 88.0
-offset_bottom = 11.0
+offset_bottom = 10.0
 mouse_filter = 0
 key_id = "Escape"
 cap_text = "ESC"
@@ -937,9 +942,9 @@ metadata/_edit_use_anchors_ = true
 
 [node name="P" parent="Arranger/kbanchor/kb_gaming" instance=ExtResource("20_82xsv")]
 offset_left = 103.0
-offset_top = 5.0
+offset_top = 4.0
 offset_right = 114.0
-offset_bottom = 11.0
+offset_bottom = 10.0
 mouse_filter = 0
 key_id = "P"
 cap_text = "PAUSE"
@@ -949,9 +954,9 @@ metadata/_edit_use_anchors_ = true
 
 [node name="Z" parent="Arranger/kbanchor/kb_gaming" instance=ExtResource("20_82xsv")]
 offset_left = 77.0
-offset_top = 43.0
+offset_top = 39.0
 offset_right = 88.0
-offset_bottom = 54.0
+offset_bottom = 50.0
 mouse_filter = 0
 key_id = "Z"
 cap_type = 1
@@ -962,10 +967,10 @@ special_behaviour = 1
 metadata/_edit_use_anchors_ = true
 
 [node name="X" parent="Arranger/kbanchor/kb_gaming" instance=ExtResource("20_82xsv")]
-offset_left = 103.0
-offset_top = 32.0
-offset_right = 114.0
-offset_bottom = 43.0
+offset_left = 102.0
+offset_top = 24.0
+offset_right = 113.0
+offset_bottom = 35.0
 mouse_filter = 0
 key_id = "X"
 cap_type = 1
@@ -979,3 +984,4 @@ offset_left = 3.0
 offset_top = 4.0
 offset_right = 34.0
 offset_bottom = 35.0
+metadata/_edit_use_anchors_ = true
