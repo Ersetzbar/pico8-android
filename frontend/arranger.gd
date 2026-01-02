@@ -6,7 +6,6 @@ extends Control
 
 var display_frame: Node2D = null
 var landscape_ui: Control = null
-var hbox_container: Control = null
 var display_container: Node2D = null
 
 var cached_kb_active: bool = false
@@ -32,9 +31,6 @@ func _ready() -> void:
 	
 	if has_node("displayContainer"):
 		display_container = get_node("displayContainer")
-	
-	if has_node("HBoxContainer"):
-		hbox_container = get_node("HBoxContainer")
 	
 	# Attempt to find sibling LandscapeUI
 	var parent = get_parent()
@@ -81,8 +77,6 @@ func _process(delta: float) -> void:
 	dirty = false # Reset flag
 	
 	var kb_height = 0
-	if cached_kb_active:
-		kb_height = 64 # Hardcoded generic height for offset logic if active
 	
 	var is_landscape = screensize.x >= screensize.y
 
@@ -96,12 +90,12 @@ func _process(delta: float) -> void:
 	var available_size = Vector2(screensize)
 
 
-	
 	# Use cached state instead of polling every frame
 	var is_controller_connected = cached_controller_connected
 	
 	# If Landscape OR Controller is connected, we target the game-only size (128x128)
-	if is_landscape or is_controller_connected:
+	# BUT only if this is the actual game display (has display_container)
+	if (is_landscape or is_controller_connected) and display_container:
 		target_size = Vector2(128, 128)
 		target_pos = Vector2(0, 0)
 		
@@ -112,41 +106,47 @@ func _process(delta: float) -> void:
 			available_size.x -= 250
 		
 	var maxScale: int = max(1, floor(min(
-		available_size.x/target_size.x, available_size.y/target_size.y
+		available_size.x / target_size.x, available_size.y / target_size.y
 	)))
 	self.scale = Vector2(maxScale, maxScale)
 	
 	# Compensate for Arranger zoom to keep high-res D-pad at constant physical size
 	var dpad = get_node_or_null("kbanchor/kb_gaming/Onmipad")
 	if dpad:
-		var target_scale = 0.85 / float(maxScale)
+		var target_scale = 8.5 / float(maxScale)
 		dpad.scale = Vector2(target_scale, target_scale)
-	
+
 	if not visible:
-		visible = true	# Use ACTUAL screensize for centering logic, but calculated scale based on reduced size
-	var extraSpace = Vector2(screensize) - (target_size*maxScale)
+		visible = true
+	# Calculate kb_height based on overlap
+	if cached_kb_active:
+		var real_kb_h = DisplayServer.virtual_keyboard_get_height()
+		# Calculate where the bottom of the Pico-8 specific screen is (in window coordinates)
+		var screen_bottom = 0
+		
+		# For this calculation, we need to know where the "Arranger" top-left is effectively placed
+		# Landscape is always centered. Portrait is usually 0, unless centered_y is on.
+		if is_landscape:
+			screen_bottom = (screensize.y / 2) + (64 * maxScale)
+		else:
+			# Portrait Logic:
+			# Arranger Y = (Centered ? (ScreenY - ContentY)/2 : 0)
+			# Screen Y = Arranger Y + 12 (top padding) + 128 (screen height)
+			var content_height = target_size.y * maxScale
+			var arr_y = (screensize.y - content_height) / 2 if center_y else 0
+			screen_bottom = arr_y + (140 * maxScale) # 140 = 12 (padding) + 128 (screen)
+		
+		if screen_bottom > (screensize.y - real_kb_h):
+			kb_height = 64
+
+	
+	var extraSpace = Vector2(screensize) - (target_size * maxScale)
 	if kb_height:
 		extraSpace.y -= kb_height
 		if KBMan.get_current_keyboard_type() == KBMan.KBType.FULL:
-			extraSpace.y = max(-92*maxScale, extraSpace.y)
+			extraSpace.y = max(-92 * maxScale, extraSpace.y)
 		else:
 			extraSpace.y = max(0, extraSpace.y)
-	if kb_anchor != null:
-		if is_landscape or is_controller_connected:
-			kb_anchor.visible = false
-		else:
-			kb_anchor.visible = true
-			kb_anchor.position.y = (rect.size.y + extraSpace.y/maxScale - 18)
-			
-	if hbox_container:
-		hbox_container.visible = not is_controller_connected
-
-	# Force control of LandscapeUI visibility from here
-	if landscape_ui:
-		if is_controller_connected:
-			landscape_ui.visible = false
-		else:
-			landscape_ui.visible = is_landscape
 			
 	if display_frame:
 		display_frame.visible = false
@@ -159,36 +159,32 @@ func _process(delta: float) -> void:
 		else:
 			# Normal Portrait logic
 			kb_anchor.visible = true
-			kb_anchor.position.y = (rect.size.y + extraSpace.y/maxScale - 18)
 
-	if not center_y and not is_landscape:
-		extraSpace.y = 0
-	
+
 	if is_landscape:
-		# Perfect Centering for Landscape
+		landscape_ui.visible = not is_controller_connected
+		# Perfect Centering for Landscape Game Display
 		self.position = (Vector2(screensize) / 2).floor()
-		if display_container:
-			display_container.centered = true
-			var target_land_y = 0
-			if kb_height > 0:
-				target_land_y = -64
-			display_container.position = Vector2(0, target_land_y)
 	else:
-		# Portrait / Default Top-Left Logic
-		self.position = Vector2i(Vector2(extraSpace.x/2, extraSpace.y/2) - target_pos*maxScale)
-		if display_container:
-			display_container.centered = false
+		if not center_y:
+			extraSpace.y = 0
+		# Portrait / Generic UI Centering Logic (Top-Left Logic)
+		self.position = Vector2i(Vector2(extraSpace.x / 2, extraSpace.y / 2) - target_pos * maxScale)
+
+	# 2. Configure Display Container (if exists)
+	if display_container:
+		display_container.centered = is_landscape
+		
+		var target_y = 0
+		# Base offset for portrait
+		if not is_landscape:
+			target_y = 12
 			
-			var target_y = 0
-			# Base offset
-			if not is_landscape:
-				target_y = 12
-				
-			# Keyboard offset (move up to show bottom text)
-			if kb_height > 0:
-				target_y -= 64
-				
-			display_container.position.y = target_y
+		# Keyboard offset (move up to show bottom text)
+		if kb_height > 0:
+			target_y -= 64
+			
+		display_container.position = Vector2(0, target_y)
 
 func _is_real_controller_connected() -> bool:
 	var joypads = Input.get_connected_joypads()
@@ -196,7 +192,7 @@ func _is_real_controller_connected() -> bool:
 		var name = Input.get_joy_name(device_id).to_lower()
 		
 		# Filter out common non-gamepad devices on Android
-		if ("accelerometer" in name or "gyro" in name or "sensor" in name or 
+		if ("accelerometer" in name or "gyro" in name or "sensor" in name or
 			"virtual" in name or "touch" in name or "keypad" in name or "stylus" in name or
 			"uinput-fpc" in name):
 			continue

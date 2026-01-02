@@ -4,7 +4,7 @@ func send_ev(key: String, down: bool):
 	PicoVideoStreamer.instance.vkb_setstate(key, down)
 
 var center_offset = Vector2.ZERO
-const SHIFT = Vector2(135, 135)
+const SHIFT = Vector2(13.5, 13.5)
 const ORIGIN = Vector2(0, 0)
 
 @onready var lit_texture = preload("res://assets/omnipad_lit.png")
@@ -22,38 +22,46 @@ func _ready() -> void:
 	var s_w = w / 3.0
 	var s_h = h / 3.0
 	
+	# Destination sizing (based on actual component size, e.g. 44x43)
+	var dest_w = size.x / 3.0
+	var dest_h = size.y / 3.0
+	
 	# UP: Top-Center Block
 	var at_up = AtlasTexture.new()
 	at_up.atlas = lit_texture
 	at_up.region = Rect2(s_w, 0, s_w, s_h)
 	at_up.filter_clip = true
+	%Up.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	%Up.texture = at_up
-	%Up.position = Vector2(s_w, 0)
-	%Up.size = Vector2(s_w, s_h)
+	%Up.position = Vector2(dest_w, 0)
+	%Up.size = Vector2(dest_w, dest_h)
 	
 	# DOWN: Bottom-Center Block
 	var at_down = AtlasTexture.new()
 	at_down.atlas = lit_texture
 	at_down.region = Rect2(s_w, s_h * 2, s_w, s_h)
+	%Down.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	%Down.texture = at_down
-	%Down.position = Vector2(s_w, s_h * 2)
-	%Down.size = Vector2(s_w, s_h)
+	%Down.position = Vector2(dest_w, dest_h * 2)
+	%Down.size = Vector2(dest_w, dest_h)
 	
 	# LEFT: Middle-Left Block
 	var at_left = AtlasTexture.new()
 	at_left.atlas = lit_texture
 	at_left.region = Rect2(0, s_h, s_w, s_h)
+	%Left.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	%Left.texture = at_left
-	%Left.position = Vector2(0, s_h)
-	%Left.size = Vector2(s_w, s_h)
+	%Left.position = Vector2(0, dest_h)
+	%Left.size = Vector2(dest_w, dest_h)
 	
 	# RIGHT: Middle-Right Block
 	var at_right = AtlasTexture.new()
 	at_right.atlas = lit_texture
 	at_right.region = Rect2(s_w * 2, s_h, s_w, s_h)
+	%Right.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	%Right.texture = at_right
-	%Right.position = Vector2(s_w * 2, s_h)
-	%Right.size = Vector2(s_w, s_h)
+	%Right.position = Vector2(dest_w * 2, dest_h)
+	%Right.size = Vector2(dest_w, dest_h)
 	
 	# Reset all
 	update_visuals(Vector2i.ONE)

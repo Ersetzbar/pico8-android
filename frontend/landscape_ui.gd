@@ -1,7 +1,6 @@
 extends Control
 
 func _process(delta: float) -> void:
-	var win_size = DisplayServer.window_get_size()
 	var arranger = get_node_or_null("../Arranger")
 	if arranger:
 		# Force uniform scaling to prevent distortion (use X scale for both axes)
@@ -13,7 +12,7 @@ func _process(delta: float) -> void:
 		# Inverse scale the high-res D-Pad so it stays physical size
 		var dpad = get_node_or_null("Control/LeftPad/Omnipad")
 		if dpad:
-			var target_scale = 0.85 / s
+			var target_scale = 8.5 / s
 			dpad.scale = Vector2(target_scale, target_scale)
 	else:
 		size = get_viewport_rect().size
@@ -34,7 +33,7 @@ func _is_real_controller_connected() -> bool:
 		var name = Input.get_joy_name(device_id).to_lower()
 		
 		# Filter out common non-gamepad devices on Android
-		if ("accelerometer" in name or "gyro" in name or "sensor" in name or 
+		if ("accelerometer" in name or "gyro" in name or "sensor" in name or
 			"virtual" in name or "touch" in name or "keypad" in name or "stylus" in name or
 			"uinput-fpc" in name):
 			continue

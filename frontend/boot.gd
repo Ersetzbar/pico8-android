@@ -10,8 +10,11 @@ static var PUBLIC_FOLDER = "/sdcard/Documents/pico8"
 
 # Centralized permission checking
 func has_storage_access() -> bool:
+	var permissions = OS.get_granted_permissions()
 	return (
-		"android.permission.MANAGE_EXTERNAL_STORAGE" in OS.get_granted_permissions() or
+		"android.permission.MANAGE_EXTERNAL_STORAGE" in permissions or
+		("android.permission.READ_EXTERNAL_STORAGE" in permissions and
+		"android.permission.WRITE_EXTERNAL_STORAGE" in permissions) or
 		FileAccess.file_exists("user://dont-ask-for-storage")
 	)
 
@@ -41,7 +44,7 @@ func get_pico_zip() -> Variant:
 			return null
 	
 	var valid_pico_zips = Array(public_folder.get_files()).filter(
-		func (name): return "pico-8" in name and "raspi.zip" in name
+		func(name): return "pico-8" in name and "raspi.zip" in name
 	)
 	
 	if valid_pico_zips:
@@ -56,6 +59,10 @@ func get_pico_zip() -> Variant:
 var android_picker
 
 func _ready() -> void:
+	# Wait for the window to be fully initialized to avoid race conditions with focus events
+	await get_tree().process_frame
+	await get_tree().process_frame
+	
 	if has_storage_access():
 		check_for_files()
 	else:
@@ -64,7 +71,7 @@ func _ready() -> void:
 const BOOTSTRAP_PACKAGE_VERSION = "1"
 
 func setup():
-	set_ui_state(false, false, true)  # permission_ui=false, select_zip_ui=false, progress_ui=true
+	set_ui_state(false, false, true) # permission_ui=false, select_zip_ui=false, progress_ui=true
 	
 	# Add warning if no storage permission
 	if not has_storage_access():
@@ -106,7 +113,7 @@ func setup():
 			BIN_PATH + "/sh",
 			["-c", " ".join([
 				BIN_PATH + "/tar",
-				"-xzf", tar_path, "-C", APPDATA_FOLDER+"/",
+				"-xzf", tar_path, "-C", APPDATA_FOLDER + "/",
 				">" + PUBLIC_FOLDER + "/logs/tar_out.txt",
 				"2>" + PUBLIC_FOLDER + "/logs/tar_err.txt"
 			])]
@@ -155,12 +162,12 @@ func setup():
 var waiting_for_focus = false
 
 func request_storage_permission():
-	set_ui_state(true, false, false)  # permission_ui=true, select_zip_ui=false, progress_ui=false
+	set_ui_state(true, false, false) # permission_ui=true, select_zip_ui=false, progress_ui=false
 	%GrantButton.pressed.connect(grant_permission)
 	%DenyButton.pressed.connect(handle_permission_denial)
 
 func grant_permission():
-	OS.request_permission("android.permission.MANAGE_EXTERNAL_STORAGE")
+	OS.request_permissions()
 	waiting_for_focus = true
 
 func _notification(what: int) -> void:
@@ -169,7 +176,7 @@ func _notification(what: int) -> void:
 		check_for_files()
 
 func check_for_files():
-	set_ui_state()  # Hide all UIs first (all parameters default to false)
+	set_ui_state() # Hide all UIs first (all parameters default to false)
 	
 	var picozip = get_pico_zip()
 	print("Pico zip: ", picozip)
@@ -177,7 +184,7 @@ func check_for_files():
 		pico_zip_path = picozip
 		setup()
 	else:
-		set_ui_state(false, true, false)  # permission_ui=false, select_zip_ui=true, progress_ui=false
+		set_ui_state(false, true, false) # permission_ui=false, select_zip_ui=true, progress_ui=false
 		%OpenPickerButton.pressed.connect(open_picker)
 		%Label.text = "pico8 zip not found"
 

@@ -30,14 +30,14 @@ func _ready() -> void:
 	last_message_time = Time.get_ticks_msec() - RETRY_INTERVAL
 	
 	# Connect the single keyboard toggle button
-	var keyboard_btn = get_node("Arranger/HBoxContainer/Keyboard Btn")
+	var keyboard_btn = get_node("Arranger/kbanchor/HBoxContainer/Keyboard Btn")
 	if keyboard_btn:
 		keyboard_btn.pressed.connect(_on_keyboard_toggle_pressed)
 		# Set initial button label based on current state
 		_update_keyboard_button_label()
 	
 	# Connect the haptic toggle button
-	var haptic_btn = get_node("Arranger/HBoxContainer/Haptic Btn")
+	var haptic_btn = get_node("Arranger/kbanchor/HBoxContainer/Haptic Btn")
 	if haptic_btn:
 		haptic_btn.pressed.connect(_on_haptic_toggle_pressed)
 		# Set initial button label based on current state
@@ -346,7 +346,7 @@ func _on_keyboard_toggle_pressed():
 	_update_keyboard_button_label()
 
 func _update_keyboard_button_label():
-	var keyboard_btn = get_node("Arranger/HBoxContainer/Keyboard Btn")
+	var keyboard_btn = get_node("Arranger/kbanchor/HBoxContainer/Keyboard Btn")
 	if not keyboard_btn:
 		return
 	var current_type = KBMan.get_current_keyboard_type()
@@ -359,7 +359,7 @@ func _on_haptic_toggle_pressed():
 	_update_haptic_button_label()
 
 func _update_haptic_button_label():
-	var haptic_btn = get_node("Arranger/HBoxContainer/Haptic Btn")
+	var haptic_btn = get_node("Arranger/kbanchor/HBoxContainer/Haptic Btn")
 	if not haptic_btn:
 		return
 	var current_state = get_haptic_enabled()
