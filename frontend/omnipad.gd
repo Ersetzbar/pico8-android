@@ -10,6 +10,7 @@ const ORIGIN = Vector2(0, 0)
 @onready var lit_texture = preload("res://assets/omnipad_lit.png")
 
 func _ready() -> void:
+	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	center_offset = size / 2
 	
 	# Convert normal TextureRects to use AtlasTexture dynamically
@@ -109,8 +110,8 @@ func update_visuals(dir: Vector2i):
 	%Down.visible = (dir.y == 2)
 
 func _gui_input(event: InputEvent) -> void:
-	if event is InputEventScreenDrag or event is InputEventScreenTouch:
-		if event is InputEventScreenTouch and not event.pressed:
+	if event is InputEventScreenDrag or event is InputEventScreenTouch or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT) or (event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT)):
+		if (event is InputEventScreenTouch and not event.pressed) or (event is InputEventMouseButton and not event.pressed):
 			update_dir(Vector2i.ONE)
 		else:
 			var vec: Vector2 = event.position - center_offset
@@ -138,7 +139,7 @@ func _gui_input(event: InputEvent) -> void:
 				
 				# Threshold 0.6 = approx 31 degrees (Even wider cardinal zone)
 				# Increasing this makes diagonals HARDER to hit (must be more precise)
-				if ratio < 0.6: 
+				if ratio < 0.6:
 					# Suppress the weaker axis
 					if abs_x > abs_y:
 						dir.y = 1 # Snap to Horizontal
@@ -148,5 +149,5 @@ func _gui_input(event: InputEvent) -> void:
 			update_dir(dir)
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_VISIBILITY_CHANGED:
+	if what == NOTIFICATION_VISIBILITY_CHANGED or what == NOTIFICATION_MOUSE_EXIT:
 		update_dir(Vector2i.ONE)

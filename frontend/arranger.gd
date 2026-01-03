@@ -20,7 +20,7 @@ func set_keyboard_active(active: bool):
 		dirty = true
 
 func update_controller_state():
-	var new_state = _is_real_controller_connected()
+	var new_state = ControllerUtils.is_real_controller_connected()
 	if cached_controller_connected != new_state:
 		cached_controller_connected = new_state
 		dirty = true
@@ -78,7 +78,7 @@ func _process(delta: float) -> void:
 	
 	var kb_height = 0
 	
-	var is_landscape = screensize.x >= screensize.y
+	var is_landscape = PicoVideoStreamer.is_system_landscape()
 
 	
 	var target_size = rect.size
@@ -95,19 +95,35 @@ func _process(delta: float) -> void:
 	
 	# If Landscape OR Controller is connected, we target the game-only size (128x128)
 	# BUT only if this is the actual game display (has display_container)
+	# If Landscape OR Controller is connected, we target the game-only size (128x128)
+	# BUT only if this is the actual game display (has display_container)
+	var maxScale: int = 1
 	if (is_landscape or is_controller_connected) and display_container:
 		target_size = Vector2(128, 128)
 		target_pos = Vector2(0, 0)
+		
+		# Define a "virtual" target size used ONLY for calculating the max scale.
+		# This ensures that we reserve enough "game-pixel" equivalent space for the UI.
+		var scale_calc_size = Vector2(128, 128)
 		
 		# Only reserve space for side controls if:
 		# 1. We are physically in landscape (wide screen)
 		# 2. AND No controller is connected (so we need on-screen controls)
 		if is_landscape and not is_controller_connected:
-			available_size.x -= 250
+			# We need approx 80 pixels of "game-scaled" space on each side.
+			# 80 * 2 = 160. Total width 288.
+			scale_calc_size.x += 160
 		
-	var maxScale: int = max(1, floor(min(
-		available_size.x / target_size.x, available_size.y / target_size.y
-	)))
+		# Use the virtual size for scale calculation
+		maxScale = max(1, floor(min(
+			available_size.x / scale_calc_size.x, available_size.y / scale_calc_size.y
+		)))
+	else:
+		# Standard scaling logic for portraits/menus
+		maxScale = max(1, floor(min(
+			available_size.x / target_size.x, available_size.y / target_size.y
+		)))
+
 	self.scale = Vector2(maxScale, maxScale)
 	
 	# Compensate for Arranger zoom to keep high-res D-pad at constant physical size
@@ -185,18 +201,3 @@ func _process(delta: float) -> void:
 			target_y -= 64
 			
 		display_container.position = Vector2(0, target_y)
-
-func _is_real_controller_connected() -> bool:
-	var joypads = Input.get_connected_joypads()
-	for device_id in joypads:
-		var name = Input.get_joy_name(device_id).to_lower()
-		
-		# Filter out common non-gamepad devices on Android
-		if ("accelerometer" in name or "gyro" in name or "sensor" in name or
-			"virtual" in name or "touch" in name or "keypad" in name or "stylus" in name or
-			"uinput-fpc" in name):
-			continue
-			
-		return true
-	
-	return false

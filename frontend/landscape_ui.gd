@@ -17,27 +17,12 @@ func _process(delta: float) -> void:
 	else:
 		size = get_viewport_rect().size
 	
-	var is_landscape = size.x >= size.y
+	var is_landscape = PicoVideoStreamer.is_system_landscape()
 	
 	# Only show if in landscape mode AND controls are needed (no physical controller)
-	var is_controller_connected = _is_real_controller_connected()
+	var is_controller_connected = ControllerUtils.is_real_controller_connected()
 	var should_be_visible = is_landscape and not is_controller_connected
 	
 	# print("LandscapeUI: landscape=", is_landscape, " controller=", is_controller_connected, " visible=", should_be_visible)
 	
 	visible = should_be_visible
-
-func _is_real_controller_connected() -> bool:
-	var joypads = Input.get_connected_joypads()
-	for device_id in joypads:
-		var name = Input.get_joy_name(device_id).to_lower()
-		
-		# Filter out common non-gamepad devices on Android
-		if ("accelerometer" in name or "gyro" in name or "sensor" in name or
-			"virtual" in name or "touch" in name or "keypad" in name or "stylus" in name or
-			"uinput-fpc" in name):
-			continue
-			
-		return true
-	
-	return false

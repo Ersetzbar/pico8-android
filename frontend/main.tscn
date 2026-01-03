@@ -33,6 +33,7 @@
 [ext_resource type="Texture2D" uid="uid://dgcgu5h435dwx" path="res://assets/btn_esc_pressed.png" id="48_esc_press"]
 [ext_resource type="Texture2D" uid="uid://dlu77ynuh6dl1" path="res://assets/btn_menu_normal.png" id="49_menu_norm"]
 [ext_resource type="Texture2D" uid="uid://cts6512y2afit" path="res://assets/btn_menu_pressed.png" id="50_menu_press"]
+[ext_resource type="PackedScene" uid="uid://b6p2v8g5q4x7y" path="res://options_menu.tscn" id="170_options"]
 
 [sub_resource type="Gradient" id="Gradient_ig7tw"]
 offsets = PackedFloat32Array(0)
@@ -167,6 +168,9 @@ displayContainer = NodePath("Arranger/displayContainer")
 [node name="runcmd" type="Node" parent="."]
 script = ExtResource("41_4lmeg")
 
+[node name="OptionsMenu" parent="." instance=ExtResource("170_options")]
+
+
 [node name="Display" type="SubViewport" parent="."]
 handle_input_locally = false
 size = Vector2i(128, 128)
@@ -223,16 +227,7 @@ theme_override_font_sizes/font_size = 5
 theme_override_styles/focus = SubResource("StyleBoxEmpty_d13ii")
 text = "fULL kEYBOARD"
 
-[node name="Haptic Btn" type="Button" parent="Arranger/kbanchor/HBoxContainer"]
-layout_mode = 2
-size_flags_horizontal = 10
-focus_mode = 0
-theme_override_fonts/font = ExtResource("20_d13ii")
-theme_override_font_sizes/font_size = 5
-theme_override_styles/focus = SubResource("StyleBoxEmpty_d13ii")
-text = "hAPTIC: oFF"
-alignment = 2
-metadata/_edit_use_anchors_ = true
+
 
 [node name="kb_pocketchip" type="Node2D" parent="Arranger/kbanchor"]
 visible = false

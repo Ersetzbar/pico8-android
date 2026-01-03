@@ -35,14 +35,10 @@ func _ready() -> void:
 		keyboard_btn.pressed.connect(_on_keyboard_toggle_pressed)
 		# Set initial button label based on current state
 		_update_keyboard_button_label()
-	
-	# Connect the haptic toggle button
-	var haptic_btn = get_node("Arranger/kbanchor/HBoxContainer/Haptic Btn")
-	if haptic_btn:
-		haptic_btn.pressed.connect(_on_haptic_toggle_pressed)
-		# Set initial button label based on current state
-		_update_haptic_button_label()
 		
+	KBMan.subscribe(_on_external_keyboard_change)
+	
+
 	# Listen for controller hot-plugging
 	Input.joy_connection_changed.connect(_on_joy_connection_changed)
 
@@ -115,25 +111,36 @@ func _process(delta: float) -> void:
 	if tcp.get_status() == StreamPeerTCP.STATUS_CONNECTING:
 		tcp.poll()
 	elif tcp.get_status() == StreamPeerTCP.STATUS_CONNECTED:
-		_check_long_press()
-		# mouse
-		var screen_pos: Vector2i = (
-			(get_viewport().get_mouse_position()
-			- displayContainer.global_position)
-			/ displayContainer.global_scale
-		)
-		#if screen_pos != screen_pos.clampi(0, 127):
-			#screen_pos = Vector2i(255, 0)
+		var screen_pos: Vector2i = Vector2i.ZERO
+		
+		if input_mode == InputMode.MOUSE:
+			var local_pos = (
+				(get_viewport().get_mouse_position()
+				- displayContainer.global_position)
+				/ displayContainer.global_scale
+			)
+			if displayContainer.centered:
+				local_pos += Vector2(64, 64)
+			screen_pos = local_pos
+		else:
+			# Trackpad Mode
+			screen_pos = virtual_cursor_pos
+
+		var mask = 0
+		if input_mode == InputMode.MOUSE:
+			mask = Input.get_mouse_button_mask() & 0xff
+		else:
+			# Trackpad Mode: Combine virtual mask (controller/touch buttons)
+			mask |= _virtual_mouse_mask
 			
-		if screen_pos == screen_pos.clampi(0, 127):
-			var current_mouse_state = [screen_pos.x, screen_pos.y, Input.get_mouse_button_mask() & 0xff]
-			if current_mouse_state != last_mouse_state:
-				# and 
-				tcp.put_data([
-					PIDOT_EVENT_MOUSEEV, current_mouse_state[0], current_mouse_state[1],
-					current_mouse_state[2], 0, 0, 0, 0
-				])
-				last_mouse_state = current_mouse_state
+		var current_mouse_state = [screen_pos.x, screen_pos.y, mask]
+		if current_mouse_state != last_mouse_state:
+			# and 
+			tcp.put_data([
+				PIDOT_EVENT_MOUSEEV, current_mouse_state[0], current_mouse_state[1],
+				current_mouse_state[2], 0, 0, 0, 0
+			])
+			last_mouse_state = current_mouse_state
 		# recv screen
 		if tcp.get_available_bytes() > 0:
 			last_message_time = Time.get_ticks_msec()
@@ -209,6 +216,23 @@ static func set_haptic_enabled(enabled: bool):
 static func get_haptic_enabled() -> bool:
 	return haptic_enabled
 
+enum InputMode {MOUSE, TRACKPAD}
+static var input_mode: InputMode = InputMode.MOUSE
+
+static func set_input_mode(trackpad: bool):
+	input_mode = InputMode.TRACKPAD if trackpad else InputMode.MOUSE
+
+static func get_input_mode() -> InputMode:
+	return input_mode
+
+var virtual_cursor_pos: Vector2 = Vector2(64, 64)
+
+
+static func is_system_landscape() -> bool:
+	# Centralized check for landscape mode
+	var size = DisplayServer.window_get_size()
+	return size.x >= size.y
+
 
 func vkb_setstate(id: String, down: bool, unicode: int = 0, echo: bool = false):
 	if id not in SDL_KEYMAP:
@@ -222,11 +246,29 @@ func vkb_setstate(id: String, down: bool, unicode: int = 0, echo: bool = false):
 
 		if id not in held_keys:
 			held_keys.append(id)
+			
+		if input_mode == InputMode.TRACKPAD:
+			if id == "X":
+				_virtual_mouse_mask |= 1 # Left Click
+				return
+			if id == "Z":
+				_virtual_mouse_mask |= 2 # Right Click
+				return
+
 		send_key(SDL_KEYMAP[id], true, echo, keys2sdlmod(held_keys))
 		if unicode and unicode < 256:
 			send_input(unicode)
 	else:
 		held_keys.erase(id)
+		
+		if input_mode == InputMode.TRACKPAD:
+			if id == "X":
+				_virtual_mouse_mask &= ~1
+				return
+			if id == "Z":
+				_virtual_mouse_mask &= ~2
+				return
+
 		send_key(SDL_KEYMAP[id], false, false, keys2sdlmod(held_keys))
 	
 
@@ -251,26 +293,79 @@ func keys2sdlmod(keys: Array) -> int:
 			ret |= 0x0100
 	return ret
 
+# Swipe detection variables
+var touch_start_pos := Vector2.ZERO
+var touch_last_pos := Vector2.ZERO
+
+const SWIPE_DISTANCE_RATIO = 0.05 # Swipe must travel 5% of screen height
+const SWIPE_EDGE_RATIO = 0.15 # Only trigger if starting from bottom 15%
+
+# Trackpad refinements
+const TRACKPAD_SENSITIVITY = 0.5
+const TAP_MAX_DURATION = 350 # ms (Relaxed from 200)
+var _trackpad_click_pending = false
+var _trackpad_tap_start_time = 0
+var _trackpad_total_move = 0.0
+var _virtual_mouse_mask: int = 0
+
 # Long press detection variables
 var touch_down_time: int = 0
 var is_touching: bool = false
-const LONG_PRESS_DURATION_MS = 500
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed:
+			touch_start_pos = event.position
+			touch_last_pos = event.position
 			touch_down_time = Time.get_ticks_msec()
 			is_touching = true
+			
+			if input_mode == InputMode.TRACKPAD:
+				_trackpad_click_pending = true
+				_trackpad_tap_start_time = touch_down_time
+				_trackpad_total_move = 0.0
 		else:
 			is_touching = false
+			_check_swipe(event.position)
+			
+			# Trackpad Tap Logic
+			if input_mode == InputMode.TRACKPAD and _trackpad_click_pending:
+				var duration = Time.get_ticks_msec() - _trackpad_tap_start_time
+				if duration < TAP_MAX_DURATION:
+					_send_trackpad_click()
+				_trackpad_click_pending = false
 	
-	# Also accept Mouse Button for robustness
+	elif event is InputEventScreenDrag:
+		if input_mode == InputMode.TRACKPAD:
+			var delta = event.relative * TRACKPAD_SENSITIVITY
+			# Scale delta if needed, for now 1:1 pixel movement
+			virtual_cursor_pos += delta
+			virtual_cursor_pos = virtual_cursor_pos.clamp(Vector2.ZERO, Vector2(127, 127))
+			
+			_trackpad_total_move += delta.length()
+			if _trackpad_total_move > 15.0: # Relaxed from 5.0
+				_trackpad_click_pending = false
+			
+	# Also accept Mouse Button for robustness (and Desktop testing)
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
+			touch_start_pos = event.position
+			touch_last_pos = event.position
 			touch_down_time = Time.get_ticks_msec()
 			is_touching = true
 		else:
 			is_touching = false
+			_check_swipe(event.position)
+	
+	elif event is InputEventMouseMotion:
+		if input_mode == InputMode.TRACKPAD and is_touching:
+			var delta = event.relative * TRACKPAD_SENSITIVITY
+			virtual_cursor_pos += delta
+			virtual_cursor_pos = virtual_cursor_pos.clamp(Vector2.ZERO, Vector2(127, 127))
+			
+			_trackpad_total_move += delta.length()
+			if _trackpad_total_move > 15.0:
+				_trackpad_click_pending = false
 
 	#print(event)
 	if event is InputEventKey:
@@ -287,6 +382,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		pass
 
 	elif event is InputEventJoypadButton:
+		if input_mode == InputMode.TRACKPAD:
+			# Controller Mouse Click Mapping
+			# Map PICO-8 O (A/Y) -> Right Click (Mask 2)
+			if event.button_index == JoyButton.JOY_BUTTON_A or event.button_index == JoyButton.JOY_BUTTON_Y:
+				if event.pressed:
+					_virtual_mouse_mask |= 2
+				else:
+					_virtual_mouse_mask &= ~2
+				return # Consume
+				
+			# Map PICO-8 X (B/X) -> Left Click (Mask 1)
+			if event.button_index == JoyButton.JOY_BUTTON_B or event.button_index == JoyButton.JOY_BUTTON_X:
+				if event.pressed:
+					_virtual_mouse_mask |= 1
+				else:
+					_virtual_mouse_mask &= ~1
+				return # Consume
+				
 		var key_id = ""
 		match event.button_index:
 			JoyButton.JOY_BUTTON_A, JoyButton.JOY_BUTTON_Y: key_id = "Z" # Pico-8 O
@@ -309,7 +422,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventJoypadMotion:
 		var axis_threshold = 0.5
 		# Handle Left Stick X (Left/Right)
-		if event.axis == JoyAxis.JOY_AXIS_LEFT_X :
+		if event.axis == JoyAxis.JOY_AXIS_LEFT_X:
 			if event.axis_value < -axis_threshold:
 				if "Left" not in held_keys: vkb_setstate("Left", true)
 			else:
@@ -321,7 +434,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				if "Right" in held_keys: vkb_setstate("Right", false)
 		
 		# Handle Left Stick Y (Up/Down)
-		elif event.axis == JoyAxis.JOY_AXIS_LEFT_Y :
+		elif event.axis == JoyAxis.JOY_AXIS_LEFT_Y:
 			if event.axis_value < -axis_threshold:
 				if "Up" not in held_keys: vkb_setstate("Up", true)
 			else:
@@ -343,6 +456,9 @@ func _on_keyboard_toggle_pressed():
 	var current_state = KBMan.get_current_keyboard_type()
 	var new_state = KBMan.KBType.FULL if current_state == KBMan.KBType.GAMING else KBMan.KBType.GAMING
 	KBMan.set_full_keyboard_enabled(new_state == KBMan.KBType.FULL)
+	# Label update is handled by observer
+
+func _on_external_keyboard_change(_enabled: bool):
 	_update_keyboard_button_label()
 
 func _update_keyboard_button_label():
@@ -352,33 +468,45 @@ func _update_keyboard_button_label():
 	var current_type = KBMan.get_current_keyboard_type()
 	keyboard_btn.text = "fULL kEYBOARD" if current_type == KBMan.KBType.GAMING else "gAMING kEYBOARD"
 
-# Callback function for haptic toggle button
-func _on_haptic_toggle_pressed():
-	var current_state = get_haptic_enabled()
-	set_haptic_enabled(not current_state)
-	_update_haptic_button_label()
 
-func _update_haptic_button_label():
-	var haptic_btn = get_node("Arranger/kbanchor/HBoxContainer/Haptic Btn")
-	if not haptic_btn:
+func _check_swipe(end_pos: Vector2):
+	# Check if start pos is at the bottom of the screen
+	var screen_height = get_viewport().get_visible_rect().size.y
+	if touch_start_pos.y < (screen_height * (1.0 - SWIPE_EDGE_RATIO)):
 		return
-	var current_state = get_haptic_enabled()
-	haptic_btn.text = "hAPTIC: oN" if current_state else "hAPTIC: oFF"
 
-func _check_long_press():
-	if is_touching:
-		if Time.get_ticks_msec() - touch_down_time > LONG_PRESS_DURATION_MS:
-			# Only trigger if controller is connected
-			if not Input.get_connected_joypads().is_empty():
-				# Show Android Keyboard
-				DisplayServer.virtual_keyboard_show('')
-				
-				# Notify arranger to shift screen
-				var arranger = get_tree().root.get_node_or_null("Main/Arranger")
-				if arranger:
-					arranger.set_keyboard_active(true)
-					
-				if haptic_enabled:
-					Input.vibrate_handheld(50)
-				# Reset state
-				is_touching = false
+	var direction = touch_start_pos - end_pos
+	
+	var threshold_pixels = screen_height * SWIPE_DISTANCE_RATIO
+	
+	# Up means start.y > end.y (screen coords, y increases downwards) -> direction.y > 0
+	if direction.y > threshold_pixels:
+		# Ensure it's mostly vertical (horizontal movement is less than vertical movement)
+		if abs(direction.x) < direction.y:
+			_trigger_keyboard()
+
+func _trigger_keyboard():
+	# Show Android Keyboard
+	DisplayServer.virtual_keyboard_show('')
+	
+	# Notify arranger to shift screen
+	var arranger = get_tree().root.get_node_or_null("Main/Arranger")
+	if arranger:
+		arranger.set_keyboard_active(true)
+		
+	if haptic_enabled:
+		Input.vibrate_handheld(50)
+
+func _send_trackpad_click():
+	var screen_pos = Vector2i(virtual_cursor_pos)
+	# DOWN
+	var down_state = [screen_pos.x, screen_pos.y, 1] # 1 = Left Click
+	if tcp:
+		tcp.put_data([PIDOT_EVENT_MOUSEEV, down_state[0], down_state[1], down_state[2], 0, 0, 0, 0])
+	
+	# UP
+	var up_state = [screen_pos.x, screen_pos.y, 0]
+	if tcp:
+		tcp.put_data([PIDOT_EVENT_MOUSEEV, up_state[0], up_state[1], up_state[2], 0, 0, 0, 0])
+	
+	last_mouse_state = up_state
