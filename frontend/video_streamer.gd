@@ -314,6 +314,13 @@ static func set_trackpad_sensitivity(val: float):
 static func get_trackpad_sensitivity() -> float:
 	return trackpad_sensitivity
 
+static var integer_scaling_enabled: bool = true
+static func set_integer_scaling_enabled(enabled: bool):
+	integer_scaling_enabled = enabled
+
+static func get_integer_scaling_enabled() -> bool:
+	return integer_scaling_enabled
+
 const TAP_MAX_DURATION = 350 # ms (Relaxed from 200)
 var _trackpad_click_pending = false
 var _trackpad_tap_start_time = 0

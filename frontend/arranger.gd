@@ -35,6 +35,9 @@ func update_controller_state():
 		cached_controller_connected = new_state
 		dirty = true
 
+func _on_resize():
+	dirty = true
+
 func _ready() -> void:
 	var streamer = get_parent()
 	if streamer.has_signal("input_mode_changed"):
@@ -111,9 +114,9 @@ func _process(delta: float) -> void:
 	
 	# If Landscape OR Controller is connected, we target the game-only size (128x128)
 	# BUT only if this is the actual game display (has display_container)
-	# If Landscape OR Controller is connected, we target the game-only size (128x128)
-	# BUT only if this is the actual game display (has display_container)
-	var maxScale: int = 1
+	var maxScale: float = 1.0
+	var scale_factor: float = 1.0
+	
 	if (is_landscape or is_controller_connected) and display_container:
 		target_size = Vector2(128, 128)
 		target_pos = Vector2(0, 0)
@@ -130,15 +133,27 @@ func _process(delta: float) -> void:
 			# 80 * 2 = 160. Total width 288.
 			scale_calc_size.x += 160
 		
-		# Use the virtual size for scale calculation
-		maxScale = max(1, floor(min(
-			available_size.x / scale_calc_size.x, available_size.y / scale_calc_size.y
-		)))
+
+		# Calculate raw scale based on virtual size
+		# We use floor if integer scaling is enabled, otherwise we use the raw float
+		var ratio_x = available_size.x / scale_calc_size.x
+		var ratio_y = available_size.y / scale_calc_size.y
+		var raw_scale = min(ratio_x, ratio_y)
+		
+		if PicoVideoStreamer.get_integer_scaling_enabled():
+			maxScale = max(1.0, floor(raw_scale))
+		else:
+			maxScale = max(1.0, raw_scale)
 	else:
 		# Standard scaling logic for portraits/menus
-		maxScale = max(1, floor(min(
-			available_size.x / target_size.x, available_size.y / target_size.y
-		)))
+		var ratio_x = available_size.x / target_size.x
+		var ratio_y = available_size.y / target_size.y
+		var raw_scale = min(ratio_x, ratio_y)
+		
+		if PicoVideoStreamer.get_integer_scaling_enabled():
+			maxScale = max(1.0, floor(raw_scale))
+		else:
+			maxScale = max(1.0, raw_scale)
 
 	self.scale = Vector2(maxScale, maxScale)
 	

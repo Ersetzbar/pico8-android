@@ -24,10 +24,13 @@ func _ready() -> void:
 		%ToggleHaptic.toggled.connect(_on_haptic_toggled)
 	if not %ToggleKeyboard.toggled.is_connected(_on_keyboard_toggled):
 		%ToggleKeyboard.toggled.connect(_on_keyboard_toggled)
+	if not %ToggleIntegerScaling.toggled.is_connected(_on_integer_scaling_toggled):
+		%ToggleIntegerScaling.toggled.connect(_on_integer_scaling_toggled)
 		
 	# Labels (tap to toggle) - Now using Buttons
 	%ButtonHaptic.pressed.connect(_on_label_pressed.bind(%ToggleHaptic))
 	%ButtonKeyboard.pressed.connect(_on_label_pressed.bind(%ToggleKeyboard))
+	%ButtonIntegerScaling.pressed.connect(_on_label_pressed.bind(%ToggleIntegerScaling))
 	%ButtonInputMode.pressed.connect(_on_label_pressed.bind(%ToggleInputMode))
 	
 	if not %ToggleInputMode.toggled.is_connected(_on_input_mode_toggled):
@@ -93,7 +96,10 @@ func _update_layout():
 	# 3. Keyboard Row
 	_style_option_row(%ButtonKeyboard, %ToggleKeyboard, $SlidePanel/VBoxContainer/KeyboardRow/WrapperKeyboard, dynamic_font_size, scale_factor)
 
-	# 4. Input Mode Row
+	# 4. Integer Scaling Row
+	_style_option_row(%ButtonIntegerScaling, %ToggleIntegerScaling, $SlidePanel/VBoxContainer/IntegerScalingRow/WrapperIntegerScaling, dynamic_font_size, scale_factor)
+
+	# 5. Input Mode Row
 	_style_option_row(%ButtonInputMode, %ToggleInputMode, $SlidePanel/VBoxContainer/InputModeRow/WrapperInputMode, dynamic_font_size, scale_factor)
 
 	# 5. Sensitivity Row
@@ -241,10 +247,18 @@ func _on_sensitivity_changed(val: float):
 	PicoVideoStreamer.set_trackpad_sensitivity(val)
 	%LabelSensitivityValue.text = str(val).left(3) # Limit decimal places
 
+func _on_integer_scaling_toggled(toggled_on: bool):
+	PicoVideoStreamer.set_integer_scaling_enabled(toggled_on)
+	# Force Arranger update
+	var arranger = get_tree().root.get_node_or_null("Main/Arranger")
+	if arranger:
+		arranger._on_resize()
+
 func save_config():
 	var config = ConfigFile.new()
 	config.set_value("settings", "haptic_enabled", PicoVideoStreamer.get_haptic_enabled())
 	config.set_value("settings", "trackpad_sensitivity", PicoVideoStreamer.get_trackpad_sensitivity())
+	config.set_value("settings", "integer_scaling_enabled", PicoVideoStreamer.get_integer_scaling_enabled())
 	config.save(CONFIG_PATH)
 	
 func load_config():
@@ -253,17 +267,21 @@ func load_config():
 	
 	var haptic = false
 	var sensitivity = 0.5
+	var integer_scaling = true
 	
 	if err == OK:
 		haptic = config.get_value("settings", "haptic_enabled", false)
 		sensitivity = config.get_value("settings", "trackpad_sensitivity", 0.5)
+		integer_scaling = config.get_value("settings", "integer_scaling_enabled", true)
 	
 	# Apply Settings
 	PicoVideoStreamer.set_haptic_enabled(haptic)
 	PicoVideoStreamer.set_trackpad_sensitivity(sensitivity)
+	PicoVideoStreamer.set_integer_scaling_enabled(integer_scaling)
 	
 	# Update UI
 	if %ToggleHaptic: %ToggleHaptic.set_pressed_no_signal(haptic)
+	if %ToggleIntegerScaling: %ToggleIntegerScaling.set_pressed_no_signal(integer_scaling)
 	if %SliderSensitivity:
 		%SliderSensitivity.set_value_no_signal(sensitivity) # avoid double setting
 		%LabelSensitivityValue.text = str(sensitivity).left(3)
