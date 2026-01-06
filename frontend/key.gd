@@ -1,8 +1,8 @@
 extends NinePatchRect
 
-enum KeycapType { TEXT, HEX, NONE }
-enum FontType { NORMAL, WIDE, WIDE_W_SHIFT, SMALL, CUSTOM, CUSTOM_SMALL }
-enum SpecialBehaviour { NONE, LTRKEY }
+enum KeycapType {TEXT, HEX, NONE}
+enum FontType {NORMAL, WIDE, WIDE_W_SHIFT, SMALL, CUSTOM, CUSTOM_SMALL}
+enum SpecialBehaviour {NONE, LTRKEY}
 static var font_normal = preload("res://assets/font/atlas-0.png") as FontFile
 static var font_wide = preload("res://assets/font/atlas.png") as FontFile
 static var font_custom = preload("res://assets/font_custom.png") as FontFile
@@ -26,7 +26,7 @@ static var keycap_locked = preload("res://assets/keycap_locked.png")
 @export var texture_normal: Texture2D = null
 @export var texture_pressed: Texture2D = null
 
-enum KeyState { RELEASED, HELD, LOCKED }
+enum KeyState {RELEASED, HELD, LOCKED}
 
 var key_state = KeyState.RELEASED
 var repeat_timer = 0
@@ -84,7 +84,7 @@ func _ready() -> void:
 	elif cap_type == KeycapType.NONE:
 		cap_text = ""
 	if special_behaviour == SpecialBehaviour.LTRKEY:
-		cap_text_shift = String.chr(cap_text.to_ascii_buffer()[0]+31)
+		cap_text_shift = String.chr(cap_text.to_ascii_buffer()[0] + 31)
 	elif cap_type_shift == KeycapType.HEX:
 		cap_text_shift = cap_text_shift.hex_decode().get_string_from_ascii()
 	elif cap_type_shift == KeycapType.NONE:
@@ -98,6 +98,16 @@ func _ready() -> void:
 		self.texture = texture_pressed
 		self.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		%Label.visible = false
+
+func set_textures(new_normal: Texture2D, new_pressed: Texture2D):
+	texture_normal = new_normal
+	texture_pressed = new_pressed
+	
+	# Immediate Visual Refresh
+	if key_state == KeyState.RELEASED:
+		self.texture = texture_normal if texture_normal else keycap_normal
+	elif key_state == KeyState.HELD:
+		self.texture = texture_pressed if texture_pressed else keycap_held
 
 func _process(delta: float) -> void:
 	var shift_held = "Shift" in PicoVideoStreamer.instance.held_keys
@@ -143,9 +153,9 @@ func _process(delta: float) -> void:
 		round(myrect.y - lblrect.y)
 	) / 2
 	if regular_font_on:
-		%Label.position += Vector2(0.5,-1)
+		%Label.position += Vector2(0.5, -1)
 	else:
-		%Label.position += Vector2(0,-1)
+		%Label.position += Vector2(0, -1)
 	if key_state != KeyState.RELEASED:
 		%Label.position += Vector2(0, 1)
 		

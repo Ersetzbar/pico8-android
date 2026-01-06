@@ -219,8 +219,14 @@ static func get_haptic_enabled() -> bool:
 enum InputMode {MOUSE, TRACKPAD}
 static var input_mode: InputMode = InputMode.MOUSE
 
+
+signal input_mode_changed(is_trackpad)
+
 static func set_input_mode(trackpad: bool):
 	input_mode = InputMode.TRACKPAD if trackpad else InputMode.MOUSE
+	if instance:
+		instance.input_mode_changed.emit(trackpad)
+
 
 static func get_input_mode() -> InputMode:
 	return input_mode
@@ -252,7 +258,7 @@ func vkb_setstate(id: String, down: bool, unicode: int = 0, echo: bool = false):
 				_virtual_mouse_mask |= 1 # Left Click
 				return
 			if id == "Z":
-				_virtual_mouse_mask |= 2 # Right Click
+				_virtual_mouse_mask |= 4 # Right Click (SDL Mask 4, Godot Middle Mask 4)
 				return
 
 		send_key(SDL_KEYMAP[id], true, echo, keys2sdlmod(held_keys))
@@ -266,7 +272,7 @@ func vkb_setstate(id: String, down: bool, unicode: int = 0, echo: bool = false):
 				_virtual_mouse_mask &= ~1
 				return
 			if id == "Z":
-				_virtual_mouse_mask &= ~2
+				_virtual_mouse_mask &= ~4
 				return
 
 		send_key(SDL_KEYMAP[id], false, false, keys2sdlmod(held_keys))
@@ -301,7 +307,13 @@ const SWIPE_DISTANCE_RATIO = 0.05 # Swipe must travel 5% of screen height
 const SWIPE_EDGE_RATIO = 0.15 # Only trigger if starting from bottom 15%
 
 # Trackpad refinements
-const TRACKPAD_SENSITIVITY = 0.5
+static var trackpad_sensitivity: float = 0.5
+static func set_trackpad_sensitivity(val: float):
+	trackpad_sensitivity = val
+
+static func get_trackpad_sensitivity() -> float:
+	return trackpad_sensitivity
+
 const TAP_MAX_DURATION = 350 # ms (Relaxed from 200)
 var _trackpad_click_pending = false
 var _trackpad_tap_start_time = 0
@@ -337,7 +349,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	
 	elif event is InputEventScreenDrag:
 		if input_mode == InputMode.TRACKPAD:
-			var delta = event.relative * TRACKPAD_SENSITIVITY
+			var delta = event.relative * trackpad_sensitivity
 			# Scale delta if needed, for now 1:1 pixel movement
 			virtual_cursor_pos += delta
 			virtual_cursor_pos = virtual_cursor_pos.clamp(Vector2.ZERO, Vector2(127, 127))
@@ -359,7 +371,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	
 	elif event is InputEventMouseMotion:
 		if input_mode == InputMode.TRACKPAD and is_touching:
-			var delta = event.relative * TRACKPAD_SENSITIVITY
+			var delta = event.relative * trackpad_sensitivity
 			virtual_cursor_pos += delta
 			virtual_cursor_pos = virtual_cursor_pos.clamp(Vector2.ZERO, Vector2(127, 127))
 			
@@ -384,12 +396,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventJoypadButton:
 		if input_mode == InputMode.TRACKPAD:
 			# Controller Mouse Click Mapping
-			# Map PICO-8 O (A/Y) -> Right Click (Mask 2)
+			# Map PICO-8 O (A/Y) -> Right Click (Mask 4)
 			if event.button_index == JoyButton.JOY_BUTTON_A or event.button_index == JoyButton.JOY_BUTTON_Y:
 				if event.pressed:
-					_virtual_mouse_mask |= 2
+					_virtual_mouse_mask |= 4
 				else:
-					_virtual_mouse_mask &= ~2
+					_virtual_mouse_mask &= ~4
 				return # Consume
 				
 			# Map PICO-8 X (B/X) -> Left Click (Mask 1)

@@ -12,7 +12,12 @@ var is_open: bool = false
 var touch_start_x = 0.0
 var is_dragging = false
 
+const CONFIG_PATH = "user://settings.cfg"
+
 func _ready() -> void:
+	# Load config first to set initial state correctly
+	load_config()
+
 	# Connect UI Signals
 	# Toggles
 	if not %ToggleHaptic.toggled.is_connected(_on_haptic_toggled):
@@ -28,14 +33,16 @@ func _ready() -> void:
 	if not %ToggleInputMode.toggled.is_connected(_on_input_mode_toggled):
 		%ToggleInputMode.toggled.connect(_on_input_mode_toggled)
 
+	if not %SliderSensitivity.value_changed.is_connected(_on_sensitivity_changed):
+		%SliderSensitivity.value_changed.connect(_on_sensitivity_changed)
+
 	# Close Button
 	$SlidePanel/VBoxContainer/CloseButton.pressed.connect(close_menu)
+	%ButtonSave.pressed.connect(save_config)
 	
-	# Initial State Sync
-	%ToggleHaptic.button_pressed = PicoVideoStreamer.get_haptic_enabled()
-	%ToggleKeyboard.button_pressed = KBMan.get_current_keyboard_type() == KBMan.KBType.FULL
-	%ToggleInputMode.button_pressed = PicoVideoStreamer.get_input_mode() == PicoVideoStreamer.InputMode.TRACKPAD
-	_update_input_mode_label(%ToggleInputMode.button_pressed)
+	# Settings are applied via load_config(), no need to manually set button_pressed here if sync works
+	# But we need to ensure the UI reflects the loaded state.
+	# load_config handles: PicoVideoStreamer settings update AND UI element update.
 	
 	var app_version = ProjectSettings.get_setting("application/config/version")
 	if app_version:
@@ -88,9 +95,20 @@ func _update_layout():
 
 	# 4. Input Mode Row
 	_style_option_row(%ButtonInputMode, %ToggleInputMode, $SlidePanel/VBoxContainer/InputModeRow/WrapperInputMode, dynamic_font_size, scale_factor)
+
+	# 5. Sensitivity Row
+	%LabelSensitivity.add_theme_font_size_override("font_size", dynamic_font_size)
+	%LabelSensitivityValue.add_theme_font_size_override("font_size", dynamic_font_size)
+	# Scale slider custom minimum width?
+	var slider = %SliderSensitivity
+	var slider_width = 100.0 * scale_factor
+	slider.custom_minimum_size.x = slider_width
+	# Note: HSlider height scales reasonably well automatically or via theme, but we can enforce logic if needed.
+
 	
-	# 4. Close Button
+	# 4. Close and Save Buttons
 	$SlidePanel/VBoxContainer/CloseButton.add_theme_font_size_override("font_size", dynamic_font_size)
+	%ButtonSave.add_theme_font_size_override("font_size", dynamic_font_size)
 	
 	# 5. Version Label (slightly smaller)
 	%VersionLabel.add_theme_font_size_override("font_size", max(10, int(dynamic_font_size * 0.8)))
@@ -208,3 +226,54 @@ func _on_input_mode_toggled(toggled_on: bool):
 func _update_input_mode_label(is_trackpad: bool):
 	if %ButtonInputMode:
 		%ButtonInputMode.text = "Input: Trackpad" if is_trackpad else "Input: Mouse"
+	
+	if %SliderSensitivity:
+		%SliderSensitivity.editable = is_trackpad
+		%SliderSensitivity.modulate.a = 1.0 if is_trackpad else 0.5
+		
+	if %LabelSensitivity:
+		%LabelSensitivity.modulate.a = 1.0 if is_trackpad else 0.5
+		
+	if %LabelSensitivityValue:
+		%LabelSensitivityValue.modulate.a = 1.0 if is_trackpad else 0.5
+
+func _on_sensitivity_changed(val: float):
+	PicoVideoStreamer.set_trackpad_sensitivity(val)
+	%LabelSensitivityValue.text = str(val).left(3) # Limit decimal places
+
+func save_config():
+	var config = ConfigFile.new()
+	config.set_value("settings", "haptic_enabled", PicoVideoStreamer.get_haptic_enabled())
+	config.set_value("settings", "trackpad_sensitivity", PicoVideoStreamer.get_trackpad_sensitivity())
+	config.save(CONFIG_PATH)
+	
+func load_config():
+	var config = ConfigFile.new()
+	var err = config.load(CONFIG_PATH)
+	
+	var haptic = false
+	var sensitivity = 0.5
+	
+	if err == OK:
+		haptic = config.get_value("settings", "haptic_enabled", false)
+		sensitivity = config.get_value("settings", "trackpad_sensitivity", 0.5)
+	
+	# Apply Settings
+	PicoVideoStreamer.set_haptic_enabled(haptic)
+	PicoVideoStreamer.set_trackpad_sensitivity(sensitivity)
+	
+	# Update UI
+	if %ToggleHaptic: %ToggleHaptic.set_pressed_no_signal(haptic)
+	if %SliderSensitivity:
+		%SliderSensitivity.set_value_no_signal(sensitivity) # avoid double setting
+		%LabelSensitivityValue.text = str(sensitivity).left(3)
+		
+	# Sync other non-saved states usually comes from default checks
+	if %ToggleInputMode:
+		# Default to whatever PicoVideoStreamer has (usually MOUSE default)
+		var is_trackpad = PicoVideoStreamer.get_input_mode() == PicoVideoStreamer.InputMode.TRACKPAD
+		%ToggleInputMode.set_pressed_no_signal(is_trackpad)
+		_update_input_mode_label(is_trackpad)
+
+	if %ToggleKeyboard:
+		%ToggleKeyboard.button_pressed = KBMan.get_current_keyboard_type() == KBMan.KBType.FULL

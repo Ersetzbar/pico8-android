@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3 uid="uid://b6p2v8g5q4x7y"]
 
-[ext_resource type="Script" path="res://options_menu.gd" id="1_options"]
+[ext_resource type="Script" uid="uid://bl8wgg60ombjh" path="res://options_menu.gd" id="1_options"]
 [ext_resource type="Texture2D" uid="uid://cfy8e87xc6p0b" path="res://assets/cog_icon.png" id="2_cog"]
 
 [node name="OptionsMenu" type="CanvasLayer"]
@@ -10,7 +10,6 @@ script = ExtResource("1_options")
 anchors_preset = 9
 anchor_bottom = 1.0
 offset_left = -250.0
-offset_right = 0.0
 grow_vertical = 2
 color = Color(0.1, 0.1, 0.1, 0.95)
 
@@ -57,9 +56,9 @@ size_flags_horizontal = 3
 focus_mode = 0
 mouse_filter = 1
 theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
 theme_override_colors/font_pressed_color = Color(0.8, 0.8, 0.8, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
-theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
 text = "Haptic Feedback"
 flat = true
 alignment = 0
@@ -84,9 +83,9 @@ size_flags_horizontal = 3
 focus_mode = 0
 mouse_filter = 1
 theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
 theme_override_colors/font_pressed_color = Color(0.8, 0.8, 0.8, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
-theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
 text = "Full Keyboard"
 flat = true
 alignment = 0
@@ -111,9 +110,9 @@ size_flags_horizontal = 3
 focus_mode = 0
 mouse_filter = 1
 theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
 theme_override_colors/font_pressed_color = Color(0.8, 0.8, 0.8, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
-theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
 text = "Input: Mouse"
 flat = true
 alignment = 0
@@ -128,9 +127,50 @@ unique_name_in_owner = true
 layout_mode = 0
 focus_mode = 0
 
-[node name="CloseButton" type="Button" parent="SlidePanel/VBoxContainer"]
+[node name="SensitivityRow" type="HBoxContainer" parent="SlidePanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="LabelSensitivity" type="Label" parent="SlidePanel/VBoxContainer/SensitivityRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 1
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+text = "T.Sensitivity"
+
+[node name="WrapperSensitivity" type="HBoxContainer" parent="SlidePanel/VBoxContainer/SensitivityRow"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 4
+theme_override_constants/separation = 10
+
+[node name="SliderSensitivity" type="HSlider" parent="SlidePanel/VBoxContainer/SensitivityRow/WrapperSensitivity"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+size_flags_vertical = 4
+focus_mode = 0
+min_value = 0.1
+max_value = 2.0
+step = 0.1
+value = 0.5
+
+[node name="LabelSensitivityValue" type="Label" parent="SlidePanel/VBoxContainer/SensitivityRow/WrapperSensitivity"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+text = "0.5"
+horizontal_alignment = 2
+
+[node name="ButtonSave" type="Button" parent="SlidePanel/VBoxContainer"]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 10
+focus_mode = 0
+text = "Save Settings"
+
+[node name="CloseButton" type="Button" parent="SlidePanel/VBoxContainer"]
+layout_mode = 2
 focus_mode = 0
 text = "Close Menu"
 

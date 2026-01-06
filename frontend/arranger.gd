@@ -14,6 +14,16 @@ var cached_controller_connected: bool = false
 var dirty: bool = true
 var last_screensize: Vector2i = Vector2i.ZERO
 
+var tex_x_normal = preload("res://assets/btn_x_normal.png")
+var tex_x_pressed = preload("res://assets/btn_x_pressed.png")
+var tex_o_normal = preload("res://assets/btn_o_normal.png")
+var tex_o_pressed = preload("res://assets/btn_o_pressed.png")
+
+var tex_mouse_l_normal = preload("res://assets/btn_mouse_left_normal.png")
+var tex_mouse_l_pressed = preload("res://assets/btn_mouse_left_pressed.png")
+var tex_mouse_r_normal = preload("res://assets/btn_mouse_right_normal.png")
+var tex_mouse_r_pressed = preload("res://assets/btn_mouse_right_pressed.png")
+
 func set_keyboard_active(active: bool):
 	if cached_kb_active != active:
 		cached_kb_active = active
@@ -26,6 +36,12 @@ func update_controller_state():
 		dirty = true
 
 func _ready() -> void:
+	var streamer = get_parent()
+	if streamer.has_signal("input_mode_changed"):
+		streamer.input_mode_changed.connect(_update_buttons_for_mode)
+		# Initialize buttons with current state
+		_update_buttons_for_mode(streamer.get_input_mode() == streamer.InputMode.TRACKPAD)
+	
 	if has_node("displayContainer/DisplayFrame"):
 		display_frame = get_node("displayContainer/DisplayFrame")
 	
@@ -201,3 +217,19 @@ func _process(delta: float) -> void:
 			target_y -= 64
 			
 		display_container.position = Vector2(0, target_y)
+
+func _update_buttons_for_mode(is_trackpad: bool):
+	var x_btn = get_node_or_null("kbanchor/kb_gaming/X")
+	var z_btn = get_node_or_null("kbanchor/kb_gaming/Z")
+	
+	if is_trackpad:
+		if x_btn:
+			x_btn.set_textures(tex_mouse_l_normal, tex_mouse_l_pressed)
+				
+		if z_btn:
+			z_btn.set_textures(tex_mouse_r_normal, tex_mouse_r_pressed)
+	else:
+		if x_btn:
+			x_btn.set_textures(tex_x_normal, tex_x_pressed)
+		if z_btn:
+			z_btn.set_textures(tex_o_normal, tex_o_pressed)
