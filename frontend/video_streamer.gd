@@ -27,6 +27,8 @@ func reconnect():
 static var instance: PicoVideoStreamer
 func _ready() -> void:
 	instance = self
+	set_process_input(true)
+	
 	last_message_time = Time.get_ticks_msec() - RETRY_INTERVAL
 	
 	# Connect the single keyboard toggle button
@@ -122,13 +124,38 @@ func _process(delta: float) -> void:
 			if displayContainer.centered:
 				local_pos += Vector2(64, 64)
 			screen_pos = local_pos
+			
+			# Hide cursor logic
+			if is_processing_input():
+				var is_inside = displayContainer.get_rect().has_point(displayContainer.to_local(get_global_mouse_position()))
+				
+				if is_inside:
+					if Input.mouse_mode != Input.MOUSE_MODE_HIDDEN:
+						# Change shape to HAND while hiding, so the switch back to ARROW causes a refresh
+						Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND)
+						Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
+				else:
+					if Input.mouse_mode != Input.MOUSE_MODE_VISIBLE:
+						Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+						Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			else:
+				if Input.mouse_mode != Input.MOUSE_MODE_VISIBLE:
+					Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+					Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		else:
 			# Trackpad Mode
 			screen_pos = virtual_cursor_pos
+			if Input.mouse_mode != Input.MOUSE_MODE_VISIBLE:
+				Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 		var mask = 0
 		if input_mode == InputMode.MOUSE:
-			mask = Input.get_mouse_button_mask() & 0xff
+			var g_mask = Input.get_mouse_button_mask()
+			# Map Godot Mask to SDL Mask
+			if g_mask & MOUSE_BUTTON_MASK_LEFT: mask |= 1
+			if g_mask & MOUSE_BUTTON_MASK_MIDDLE: mask |= 2 # SDL Middle is 2
+			if g_mask & MOUSE_BUTTON_MASK_RIGHT: mask |= 4 # SDL Right is 4
 		else:
 			# Trackpad Mode: Combine virtual mask (controller/touch buttons)
 			mask |= _virtual_mouse_mask
