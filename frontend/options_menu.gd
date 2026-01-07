@@ -196,6 +196,11 @@ func open_menu():
 	tween.tween_property(panel, "position:x", 0.0, ANIM_DURATION).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	# Disable game input via streamer
 	if PicoVideoStreamer.instance:
+		# Send Pause (P)
+		PicoVideoStreamer.instance.vkb_setstate("P", true)
+		await get_tree().create_timer(0.1).timeout
+		PicoVideoStreamer.instance.vkb_setstate("P", false)
+		
 		PicoVideoStreamer.instance.set_process_input(false)
 
 func close_menu():
