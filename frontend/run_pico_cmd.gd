@@ -218,8 +218,7 @@ func _kill_all_pico_processes() -> void:
 				   "pkill -9 -f proot; killall -9 proot; " + \
 				   "pkill -9 -f qemu; killall -9 qemu-i386-static; " + \
 				   "pkill -9 -f pico8_64; killall -9 pico8_64; " + \
-				   "pkill -9 -f pulseaudio; killall -9 pulseaudio; " + \
-				   "pkill -9 -f nc; killall -9 nc; "
+				   "pkill -9 -f pulseaudio; killall -9 pulseaudio; "
 				   # Note: Avoid 'pkill -f pico8' as it hits the java app io.wip.pico8
 	
 	OS.execute(PicoBootManager.BIN_PATH + "/sh", ["-c", kill_cmd], [])
@@ -289,7 +288,7 @@ func _complete_restart() -> void:
 	pico_pid = null
 
 	# Cleanup temp files that might block restart (PID files, sockets, pipes)
-	# Removing the whole tmp dir content to ensure pulseaudio and nc start fresh
+	# Removing the whole tmp dir content to ensure pulseaudio
 	var pkg_path = PicoBootManager.APPDATA_FOLDER + "/package"
 	var rm_cmd = "rm -rf " + pkg_path + "/tmp/* " + pkg_path + "/ptmp/*"
 	OS.execute(PicoBootManager.BIN_PATH + "/sh", ["-c", rm_cmd], [])

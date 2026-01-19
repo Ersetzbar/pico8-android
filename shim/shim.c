@@ -1,18 +1,20 @@
 // i forgot why this define is here
 #define _GNU_SOURCE
-#include <SDL2/SDL.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <dlfcn.h>
-
 
 #include <stdio.h>
-#include <string.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <string.h>
+#include <dlfcn.h>
+#include <stdbool.h>
+#include <sys/ioctl.h>  // FIONREAD
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <SDL2/SDL.h>
 
 #define FINDSDL(VAR, NAME) \
     if (!(VAR)) { \
@@ -23,10 +25,8 @@
         } \
     }
 
-#define INPUT_FIFO "/tmp/pico8_in"
-#define OUTPUT_FIFO "/tmp/pico8_out"
-static int input_fd = -1;
-static int output_fd = -1;
+static int server_fd = -1;
+static int client_fd = -1;
 
 static Uint8 keystate[256];
 
@@ -42,33 +42,78 @@ static uint8_t* picoram = NULL;
 #define PIDOT_EVENT_KEYEV 2
 #define PIDOT_EVENT_CHAREV 3
 
-#define IN_PACKET_SIZE 8
-static char in_packet[IN_PACKET_SIZE];
-int picosync_try_read() {
+#define IN_PACKET_SIZE 8 // Event(1) + X(2) + Y(2) + Mask(1) + Pad(2)
+static uint8_t in_packet[IN_PACKET_SIZE];
 
+void shim_sock_init() {
+    if (server_fd != -1) return;
+
+    printf("SHIM: Initializing Direct TCP Server on 18080...\n");
+    
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        perror("SHIM: Socket creation failed");
+        return;
+    }
+
+    int opt = 1;
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    struct sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(18080);
+
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+        perror("SHIM: Bind failed (Is netcat still running?)");
+        return;
+    }
+
+    if (listen(server_fd, 1) < 0) {
+        perror("SHIM: Listen failed");
+        return;
+    }
+
+    // Set non-blocking to handle accept() in the loop without freezing PICO-8
+    int flags = fcntl(server_fd, F_GETFL, 0);
+    fcntl(server_fd, F_SETFL, flags | O_NONBLOCK);
+
+    printf("SHIM: Listening on 0.0.0.0:18080\n");
+}
+
+
+// Try to read a packet from the client
+// Returns true if a full packet was read
+static bool pico_poll_event() {
+    if (client_fd < 0) return false;
+
+    // Check available bytes
     int available = 0;
-    if (ioctl(input_fd, FIONREAD, &available) == -1) {
-        perror("ioctl");
-        abort();
+    if (ioctl(client_fd, FIONREAD, &available) == -1) {
+        // Error or disconnected
+        close(client_fd);
+        client_fd = -1;
+        printf("SHIM: Client disconnected (ioctl)\n");
+        return false;
     }
 
     if (available >= IN_PACKET_SIZE) {
-        ssize_t n = read(input_fd, in_packet, IN_PACKET_SIZE);
+        ssize_t n = recv(client_fd, in_packet, IN_PACKET_SIZE, 0);
         if (n == IN_PACKET_SIZE) {
-            for (int i = 0; i < IN_PACKET_SIZE; ++i)
-                printf("%02x ", (unsigned char)in_packet[i]);
-            printf("\n");
+            // Debug print only occasionally?
+             // for (int i = 0; i < IN_PACKET_SIZE; ++i) printf("%02x ", in_packet[i]); printf("\n");
             return true;
-        } else if (n == 0) {
-            printf("EOF reached\n");
-            abort();
-        } else if (n < 0) {
-            perror("read");
-            abort();
+        } else {
+             // Partial read or error, treat as disconnect for simplicity or retry
+             if (n <= 0) {
+                 close(client_fd);
+                 client_fd = -1;
+                 printf("SHIM: Client disconnected (recv 0)\n");
+             }
+             return false;
         }
-    } else {
-        return false;
     }
+    return false;
 }
 
 static bool false_start = true;
@@ -81,15 +126,7 @@ DECLSPEC int SDLCALL SDL_Init(Uint32 flags) {
         printf("false start\n");
         false_start = false;
     } else {
-        // printf("making fifos\n");
-        mkfifo(INPUT_FIFO, 0666);
-        mkfifo(OUTPUT_FIFO, 0666);
-
-        printf("opening input\n");
-        input_fd = open(INPUT_FIFO, O_RDONLY);
-        printf("opening output\n");
-        output_fd = open(OUTPUT_FIFO, O_WRONLY);
-        printf("done opening\n");
+        shim_sock_init();
     }
 
     return realf(flags);
@@ -111,8 +148,8 @@ DECLSPEC SDL_Window* SDLCALL SDL_CreateWindow(const char *title,
 }
 
 static Uint64 last_frame = 0;
-// this comes in at about 67fps
-#define MINFRAMEMS 15
+// this comes in at about 58fps
+#define MINFRAMEMS 17
 
 #define HEADER_SIZE 9 // "PICO8SYNC"
 #define META_SIZE 1
@@ -163,11 +200,32 @@ void pico_send_vid_data() {
         // Write Metadata
         packet_buffer[HEADER_SIZE] = navstate;
 
-        // Split System Calls to allow Streamer to read Header then Pixels separately
-        // 1. Write Header + Meta
-        write(output_fd, packet_buffer, HEADER_SIZE + META_SIZE);
-        // 2. Write Pixels
-        write(output_fd, packet_buffer + HEADER_SIZE + META_SIZE, PIXEL_SIZE);
+        // DIRECT TCP SEND
+        
+        // 1. Accept Connection if needed
+        if (client_fd < 0) {
+            struct sockaddr_in client_addr;
+            socklen_t addrlen = sizeof(client_addr);
+            client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &addrlen);
+            
+            if (client_fd >= 0) {
+                printf("SHIM: Client connected!\n");
+                // Enable NoDelay on the client socket too to be sure
+                int opt = 1;
+                setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
+            }
+        }
+
+        // 2. Send Data if connected
+        if (client_fd >= 0) {
+            ssize_t sent = send(client_fd, packet_buffer, TOTAL_PACKET_SIZE, MSG_NOSIGNAL);
+            if (sent < 0) {
+                 // EPIPE or other error -> Client disconnected
+                 printf("SHIM: Send failed, client disconnected\n");
+                 close(client_fd);
+                 client_fd = -1;
+            }
+        }
     }
     Uint64 ticks_now = SDL_GetTicks64();
     if (last_frame + MINFRAMEMS > ticks_now) {
@@ -260,7 +318,7 @@ DECLSPEC int SDLCALL SDL_PollEvent(SDL_Event * event) {
         //     );
         // }
     } else {
-        int result = picosync_try_read();
+        int result = pico_poll_event();
         // printf("result %d\n", result);
         if (result == true) {
             switch (in_packet[0])

@@ -29,6 +29,8 @@ func reconnect():
 	var err = tcp.connect_to_host(HOST, PORT)
 	if err != OK:
 		print("Failed to start connection. Error code: ", err)
+	else:
+		tcp.set_no_delay(true)
 	last_message_time = Time.get_ticks_msec()
 
 func hard_reset_connection():
@@ -80,6 +82,28 @@ func _ready() -> void:
 	# Listen for controller hot-plugging
 	Input.joy_connection_changed.connect(_on_joy_connection_changed)
 
+	if OS.is_debug_build():
+		_setup_debug_fps()
+
+func _setup_debug_fps():
+	debug_fps_label = Label.new()
+	debug_fps_label.text = "FPS: WAIT"
+	debug_fps_label.position = Vector2(40, 40)
+	
+	# High Visibility Overrides
+	debug_fps_label.add_theme_color_override("font_color", Color(0, 1, 0, 1)) # Bright Green
+	debug_fps_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	debug_fps_label.add_theme_constant_override("outline_size", 8)
+	debug_fps_label.add_theme_font_size_override("font_size", 48) # Large text
+	
+	debug_fps_label.z_index = 4096
+	
+	# Add a canvas layer to ensure it stays on screen regardless of camera/zoom
+	var cl = CanvasLayer.new()
+	cl.layer = 128
+	cl.add_child(debug_fps_label)
+	add_child(cl)
+
 func _on_joy_connection_changed(device: int, connected: bool):
 	if connected:
 		print("Controller connected: ", device)
@@ -112,11 +136,18 @@ const DISPLAY_BYTES = 128 * 128 * 3
 const PACKLEN = len(SYNC_SEQ) + CUSTOM_BYTE_COUNT + DISPLAY_BYTES
 
 var _rendering_image: Image
+var fps_timer: float = 0.0
+var fps_frame_count: int = 0
+var fps_skip_count: int = 0
+var debug_fps_label: Label = null
 
 func set_im_from_data(rgb: PackedByteArray):
 	# Zero-allocation update: Set data on existing image and update texture
 	_rendering_image.set_data(128, 128, false, Image.FORMAT_RGB8, rgb)
 	stream_texture.update(_rendering_image)
+	
+	if debug_fps_label:
+		fps_frame_count += 1
 
 func find_seq(host: Array, sub: Array):
 	for i in range(len(host) - len(sub) + 1):
@@ -133,7 +164,17 @@ var last_mouse_state = [0, 0, 0]
 
 var synched = false
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if debug_fps_label:
+		fps_timer += delta
+		if fps_timer >= 1.0:
+			debug_fps_label.text = "FPS: " + str(fps_frame_count)
+			#if fps_skip_count > 0:
+			#	print("Skipped ", fps_skip_count, " frames in last second (FPS: ", fps_frame_count, ")")
+			#	fps_skip_count = 0
+			fps_frame_count = 0
+			fps_timer -= 1.0
+			
 	#print("status :", current_custom_data[0])
 	if not (tcp and tcp.get_status() == StreamPeerTCP.STATUS_CONNECTED):
 		loading.visible = true
@@ -209,14 +250,18 @@ func _process(_delta: float) -> void:
 				last_message_time = Time.get_ticks_msec()
 				loading.visible = false
 				
-				# Optimization: Skip intermediate frames if backlog is large
-				# This significantly helps framerate by dropping stale frames
-				var num_packets = int(avail / PACKLEN)
-				if num_packets > 1:
-					# Skip (n-1) packets
-					tcp.get_data((num_packets - 1) * PACKLEN)
+				# GREEDY READ STRATEGY
+				# Calculate how many full frames are available
+				var num_frames = int(avail / PACKLEN)
 				
-				# ZERO-COPY READ STRATEGY
+				if num_frames > 1:
+					fps_skip_count += (num_frames - 1)
+					# Jump DIRECTLY to the start of the last frame
+					# discarding all previous frames in one go.
+					var bytes_to_skip = (num_frames - 1) * PACKLEN
+					tcp.get_data(bytes_to_skip)
+					
+				# Now read exactly one frame (the latest one)
 				# 1. Read Header + Meta
 				var header_len = len(SYNC_SEQ) + CUSTOM_BYTE_COUNT
 				var header_res = tcp.get_data(header_len)
@@ -247,7 +292,7 @@ func _process(_delta: float) -> void:
 	else:
 		print("connection failed, status: ", tcp.get_status())
 		tcp = null
-
+		
 func _process_packet(data: PackedByteArray):
 	# Assuming data starts with SYNC_SEQ
 	var im_start = len(SYNC_SEQ) + CUSTOM_BYTE_COUNT
