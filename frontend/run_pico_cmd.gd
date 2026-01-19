@@ -106,7 +106,7 @@ func _launch_pico8(target_path: String) -> void:
 			run_arg = " -run " + target_path.replace(public_root, "/home/public")
 		else:
 			# External path: bind the parent directory to /home/custom_mount
-			var parent_dir = target_path.get_base_dir()
+			var parent_dir = target_path.get_base_dir().replace("%20", " ")
 			
 			# VALIDATE PATH EXISTENCE
 			# Android External Storage paths often arrive valid but unreadable if permissions are missing
@@ -119,7 +119,8 @@ func _launch_pico8(target_path: String) -> void:
 			else:
 				print("External bind directory validated: ", parent_dir)
 			
-			var filename = target_path.get_file()
+			var filename = target_path.get_file().replace("%20", "\\ ")
+			
 			extra_bind_export = "export PROOT_EXTRA_BIND='--bind=" + parent_dir + ":/home/custom_mount'; "
 			run_arg = " -run /home/custom_mount/" + filename
 	
@@ -191,7 +192,7 @@ func _decode_and_fix_path(uri: String) -> String:
 		uri = decoded_path.substr(search_idx + file_prefix.length())
 	elif decoded_path.begins_with("/"):
 		uri = decoded_path
-		
+	
 	print("Final Target Path: ", uri)
 	return uri
 
