@@ -9,10 +9,13 @@ const CUSTOM_MANIFEST_ACTIVITY_ELEMENT = '''
 		<action android:name="android.intent.action.SEND" />
 		<category android:name="android.intent.category.DEFAULT" />
 		<data android:mimeType="application/octet-stream" />
+		<data android:mimeType="application/pkcs8" />
 		<data android:mimeType="text/plain" />
 		<data android:mimeType="image/png" />
 		<data android:pathPattern=".*\\.p8\\.png" />
 		<data android:pathPattern=".*\\.p8" />
+		<data android:pathSuffix=".p8.png" />
+		<data android:pathSuffix=".p8" />
 	</intent-filter>
 
 	<!-- Strategy: Deep Links (Lexaloffle BBS) -->
@@ -24,6 +27,8 @@ const CUSTOM_MANIFEST_ACTIVITY_ELEMENT = '''
 		<data android:scheme="https" android:host="lexaloffle.com" />
 		<data android:pathPattern=".*\\.p8\\.png" />
 		<data android:pathPattern=".*\\.p8" />
+		<data android:pathSuffix=".p8.png" />
+		<data android:pathSuffix=".p8" />
 	</intent-filter>
 	
 	<!-- Strategy: File Handling (Downloads/Local)-->
@@ -36,9 +41,12 @@ const CUSTOM_MANIFEST_ACTIVITY_ELEMENT = '''
 		<data android:scheme="content" />
 		<data android:mimeType="application/octet-stream" />
 		<data android:mimeType="application/pkcs8" />
+		<data android:mimeType="text/plain" />
 		<data android:mimeType="image/png" />
 		<data android:pathPattern=".*\\.p8\\.png" />
 		<data android:pathPattern=".*\\.p8" />
+		<data android:pathSuffix=".p8.png" />
+		<data android:pathSuffix=".p8" />
 	</intent-filter>
 '''
 const SINGLETON_NAME = "Applinks"

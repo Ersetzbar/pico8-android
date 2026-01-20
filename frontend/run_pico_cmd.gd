@@ -119,7 +119,7 @@ func _launch_pico8(target_path: String) -> void:
 			else:
 				print("External bind directory validated: ", parent_dir)
 			
-			var filename = target_path.get_file().replace("%20", "\\ ")
+			var filename = target_path.get_file().replace("%20", " ").replace(" ", "\\ ")
 			
 			extra_bind_export = "export PROOT_EXTRA_BIND='--bind=" + parent_dir + ":/home/custom_mount'; "
 			run_arg = " -run /home/custom_mount/" + filename
