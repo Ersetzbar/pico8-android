@@ -106,7 +106,8 @@ func _launch_pico8(target_path: String) -> void:
 			run_arg = " -run " + target_path.replace(public_root, "/home/public")
 		else:
 			# External path: bind the parent directory to /home/custom_mount
-			var parent_dir = target_path.get_base_dir().replace("%20", " ")
+			# properly escape single quotes for shell context: ' becomes '\''
+			var parent_dir = target_path.get_base_dir().replace("'", "'\\''")
 			
 			# VALIDATE PATH EXISTENCE
 			# Android External Storage paths often arrive valid but unreadable if permissions are missing
@@ -119,8 +120,7 @@ func _launch_pico8(target_path: String) -> void:
 			else:
 				print("External bind directory validated: ", parent_dir)
 			
-			var filename = target_path.get_file().replace("%20", " ").replace(" ", "\\ ")
-			
+			var filename = _escape_filename_for_shell(target_path.get_file())
 			extra_bind_export = "export PROOT_EXTRA_BIND='--bind=" + parent_dir + ":/home/custom_mount'; "
 			run_arg = " -run /home/custom_mount/" + filename
 	
@@ -132,6 +132,16 @@ func _launch_pico8(target_path: String) -> void:
 	)
 	print("executing as pid " + str(pico_pid) + "\n" + cmdline)
 
+
+func _escape_filename_for_shell(path: String) -> String:
+	# Escapes dangerous shell characters by prepending backslash for unquoted context
+	# Backslash MUST be replaced first to avoid double escaping
+	var res = path.replace("\\", "\\\\")
+	
+	var chars = [";", "&", "|", "$", "\"", "'", "(", ")", "<", ">", "`", " "]
+	for c in chars:
+		res = res.replace(c, "\\" + c)
+	return res
 
 func _download_file(url: String) -> String:
 	print("Attempting to download: ", url)
@@ -173,25 +183,26 @@ func _download_file(url: String) -> String:
 
 func _decode_and_fix_path(uri: String) -> String:
 	# Attempt to unwrap content:// URIs that cloak file:// paths
-	# (e.g. content://com.android.providers.media.../file%3A%2F%2F...)
-	var decoded_path = uri.uri_decode()
-	
-	# Sometimes they are double encoded
-	if "file%3A" in uri or "file%253A" in uri or "https%3A" in uri or "https%253A" in uri or "http%3A" in uri or "http%253A" in uri:
+	# (e.g. content://com.android.providers.media.../file%3A%2F%2F...)	
+	# if it starts with "/" already decoded by the intent plugin, no need to redo
+	if not uri.begins_with("/"):
+		var decoded_path = uri.uri_decode()
+			
+		# triple encoded
+		if "file%3A" in decoded_path or "http%3A" in decoded_path or 	"http%3A" in decoded_path:
+			decoded_path = decoded_path.uri_decode()
+
 		decoded_path = decoded_path.uri_decode()
+		print("Decoded URI: ", decoded_path)
 
-	print("Decoded URI: ", decoded_path)
+		# Handle HTTP/HTTPS URLs asynchronously
+		if decoded_path.begins_with("http://") or decoded_path.begins_with("https://"):
+			return await _download_file(decoded_path)
 
-	# Handle HTTP/HTTPS URLs asynchronously
-	if decoded_path.begins_with("http://") or decoded_path.begins_with("https://"):
-		return await _download_file(decoded_path)
-
-	var file_prefix = "file://"
-	var search_idx = decoded_path.find(file_prefix)
-	if search_idx != -1:
-		uri = decoded_path.substr(search_idx + file_prefix.length())
-	elif decoded_path.begins_with("/"):
-		uri = decoded_path
+		var file_prefix = "file://"
+		var search_idx = decoded_path.find(file_prefix)
+		if search_idx != -1:
+			uri = decoded_path.substr(search_idx + file_prefix.length())
 	
 	print("Final Target Path: ", uri)
 	return uri
