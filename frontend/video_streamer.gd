@@ -8,6 +8,13 @@ class_name PicoVideoStreamer
 var HOST = "192.168.0.42" if Engine.is_embedded_in_editor() else "127.0.0.1"
 var PORT = 18080
 
+# TCP Threading
+var _thread: Thread
+var _mutex: Mutex
+var _thread_active: bool = false
+var _reset_requested: bool = false
+var _input_queue: Array = []
+
 var tcp: StreamPeerTCP
 
 const PIDOT_EVENT_MOUSEEV = 1;
@@ -24,28 +31,16 @@ func _on_intent_session_started():
 	print("Video Streamer: Intent Session Started (Controller Mapping Updated)")
 	is_intent_session = true
 
-func reconnect():
-	tcp = StreamPeerTCP.new()
-	var err = tcp.connect_to_host(HOST, PORT)
-	if err != OK:
-		print("Failed to start connection. Error code: ", err)
-	else:
-		tcp.set_no_delay(true)
-	last_message_time = Time.get_ticks_msec()
-
 func hard_reset_connection():
 	print("Forcing Hard TCP Reset...")
-	if tcp:
-		tcp.disconnect_from_host()
-		tcp = null
-	synched = false
-	last_message_time = 0 # Forces immediate reconnect in _process
+	# Signal the thread to reset the connection
+	if _mutex:
+		_mutex.lock()
+		_reset_requested = true
+		_mutex.unlock()
 
 static var instance: PicoVideoStreamer
 func _ready() -> void:
-	instance = self
-	set_process_input(true)
-	
 	instance = self
 	set_process_input(true)
 	
@@ -54,13 +49,19 @@ func _ready() -> void:
 	# Pre-calculate PackedByteArray for fast sync check
 	SYNC_SEQ_PBA = PackedByteArray(SYNC_SEQ)
 	
-	# Pre-allocate texture for performance
-	_rendering_image = Image.create(128, 128, false, Image.FORMAT_RGB8)
-	stream_texture = ImageTexture.create_from_image(_rendering_image)
+	# Pre-allocate texture for performance (Triple Buffering)
+	for i in range(3):
+		var img = Image.create(128, 128, false, Image.FORMAT_RGBA8)
+		_buffer_images.append(img)
+		
+	stream_texture = ImageTexture.create_from_image(_buffer_images[0])
 	display.texture = stream_texture
 
-	# Try to start TCP connection
-	reconnect()
+	# Start TCP Thread
+	_mutex = Mutex.new()
+	_thread = Thread.new()
+	_thread_active = true
+	_thread.start(_thread_function)
 	
 	# Connect the single keyboard toggle button
 	var keyboard_btn = get_node("Arranger/kbanchor/HBoxContainer/Keyboard Btn")
@@ -84,6 +85,147 @@ func _ready() -> void:
 
 	if OS.is_debug_build():
 		_setup_debug_fps()
+
+func _exit_tree():
+	_thread_active = false
+	if _thread and _thread.is_started():
+		_thread.wait_to_finish()
+	
+	if tcp:
+		tcp.disconnect_from_host()
+
+func _thread_function():
+	print("TCP Thread Started")
+	# Initial connect
+	reconnect_threaded()
+	
+	var buffer: PackedByteArray = PackedByteArray()
+	
+	while _thread_active:
+		# check for reset request
+		var do_reset = false
+		if _mutex:
+			_mutex.lock()
+			do_reset = _reset_requested
+			if do_reset:
+				_reset_requested = false
+			_mutex.unlock()
+		
+		if do_reset:
+			if tcp:
+				tcp.disconnect_from_host()
+				tcp = null
+			synched = false
+			buffer.clear()
+			last_message_time = 0
+		
+		# Connection Management
+		if not (tcp and tcp.get_status() == StreamPeerTCP.STATUS_CONNECTED):
+			# Use call_deferred to update UI from thread
+			loading.call_deferred("set_visible", true)
+			
+			if not tcp:
+				if Time.get_ticks_msec() - last_message_time > RETRY_INTERVAL:
+					print("reconnecting - random id %08x" % randi())
+					reconnect_threaded()
+			elif tcp.get_status() == StreamPeerTCP.STATUS_CONNECTING:
+				tcp.poll()
+			else:
+				# Reconnect logic for failed state
+				if Time.get_ticks_msec() - last_message_time > RETRY_INTERVAL:
+					reconnect_threaded()
+		
+		elif tcp.get_status() == StreamPeerTCP.STATUS_CONNECTED:
+			# Loading spinner update
+			loading.call_deferred("set_visible", false)
+			
+			# Send Input Queue
+			_mutex.lock()
+			var inputs = _input_queue.duplicate()
+			_input_queue.clear()
+			_mutex.unlock()
+			
+			for packet in inputs:
+				tcp.put_data(packet)
+
+			# Read Data
+			var avail = tcp.get_available_bytes()
+			if avail > 0:
+				last_message_time = Time.get_ticks_msec()
+				
+				# If we have huge backlog, maybe we should skip?
+				# But user asked to avoid skipping if possible. 
+				# Let's try to just process everything fast.
+				
+				if not synched:
+					var chunk = tcp.get_data(avail)
+					if chunk[0] == OK:
+						buffer.append_array(chunk[1])
+						
+						# Search for SYNC_SEQ
+						var syncpoint = find_seq_pba(buffer, SYNC_SEQ_PBA)
+						if syncpoint != -1:
+							#print("Resync successful at index: ", syncpoint)
+							if buffer.size() >= syncpoint + PACKLEN:
+								var packet = buffer.slice(syncpoint, syncpoint + PACKLEN)
+								_process_packet_thread(packet)
+								buffer.clear() # Clear buffer completely
+								synched = true
+							else:
+								# Keep enough buffer for next read
+								if syncpoint > 0:
+									buffer = buffer.slice(syncpoint)
+						else:
+							if buffer.size() > PACKLEN * 2:
+								buffer = buffer.slice(PACKLEN) # Discard old garbage
+				else:
+					# Synched mode - Read frame by frame
+					if avail >= PACKLEN:
+						# Greedy read: If multiple frames are available, only render the latest one?
+						# User asked: "can set_im_from_data be done in the new thread to maximze the refresh rate as soon as the data is available?"
+						# But they also asked "avoid to skip frames like we do at line 257".
+						# If we respect "avoid skipping", we must process ALL frames (rendering them one by one).
+						# But if we process all frames, we might fall behind if rendering is slower than network.
+						# However, updating texture is fast.
+						# Let's try reading ALL available full frames in a loop
+						var num_frames = int(avail / PACKLEN)
+						for i in range(num_frames):
+							var header_res = tcp.get_data(len(SYNC_SEQ) + CUSTOM_BYTE_COUNT)
+							if header_res[0] == OK:
+								var header_data = header_res[1]
+								if header_data.slice(0, len(SYNC_SEQ)) == SYNC_SEQ_PBA:
+									var pixel_res = tcp.get_data(DISPLAY_BYTES)
+									if pixel_res[0] == OK:
+										set_im_from_data_threaded(pixel_res[1])
+								else:
+									print("Sync lost! Entering resync mode.")
+									synched = false
+									buffer.append_array(header_data)
+									break # Exit loop
+							else:
+								synched = false
+								break
+		
+		# Check Timeout
+		if last_message_time > 0 and (Time.get_ticks_msec() - last_message_time > READ_TIMEOUT):
+			print("timeout detected")
+			if tcp:
+				tcp.disconnect_from_host()
+				tcp = null
+			synched = false
+			buffer.clear()
+
+		# Sleep to prevent burning CPU
+		OS.delay_msec(1)
+
+func reconnect_threaded():
+	tcp = StreamPeerTCP.new()
+	var err = tcp.connect_to_host(HOST, PORT)
+	if err != OK:
+		print("Failed to start connection. Error code: ", err)
+	else:
+		tcp.set_no_delay(true)
+	last_message_time = Time.get_ticks_msec()
 
 func _setup_debug_fps():
 	debug_fps_label = Label.new()
@@ -127,28 +269,58 @@ func release_input_locks():
 	get_viewport().gui_release_focus()
 	DisplayServer.virtual_keyboard_hide()
 
-var buffer := []
-const SYNC_SEQ = [80, 73, 67, 79, 56, 83, 89, 78, 67] # "PICO8SYNC"
+const SYNC_SEQ = [80, 73, 67, 79, 56, 83, 89, 78, 67, 95, 95] # "PICO8SYNC"
 var SYNC_SEQ_PBA: PackedByteArray
 const CUSTOM_BYTE_COUNT = 1
 var current_custom_data := range(CUSTOM_BYTE_COUNT)
-const DISPLAY_BYTES = 128 * 128 * 3
+const DISPLAY_BYTES = 128 * 128 * 4
 const PACKLEN = len(SYNC_SEQ) + CUSTOM_BYTE_COUNT + DISPLAY_BYTES
 
-var _rendering_image: Image
+var _buffer_images: Array[Image] = []
+var _write_head: int = 0
 var fps_timer: float = 0.0
 var fps_frame_count: int = 0
 var fps_skip_count: int = 0
 var debug_fps_label: Label = null
 
-func set_im_from_data(rgb: PackedByteArray):
-	# Zero-allocation update: Set data on existing image and update texture
-	_rendering_image.set_data(128, 128, false, Image.FORMAT_RGB8, rgb)
-	stream_texture.update(_rendering_image)
+# Thread-safe image update
+# Thread-safe image update using Ring Buffer (Triple Buffering)
+func set_im_from_data_threaded(rgba: PackedByteArray):
+	# Select next buffer
+	var img = _buffer_images[_write_head]
 	
-	if debug_fps_label:
+	# Write data to it
+	img.set_data(128, 128, false, Image.FORMAT_RGBA8, rgba)
+	
+	# Handover to Main Thread
+	call_deferred("_update_texture", img)
+	
+	# Advance head (Ring Buffer 0 -> 1 -> 2 -> 0)
+	_write_head = (_write_head + 1) % 3
+	
+	# Update FPS counter
+	if _mutex:
+		_mutex.lock()
 		fps_frame_count += 1
+		_mutex.unlock()
 
+func _update_texture(rendering_image: Image):
+	stream_texture.update(rendering_image)
+
+
+func find_seq_pba(host: PackedByteArray, sub: PackedByteArray):
+	# Optimized search for PackedByteArray
+	var host_len = host.size()
+	var sub_len = sub.size()
+	if host_len < sub_len: return -1
+	
+	for i in range(host_len - sub_len + 1):
+		# Quick check first byte
+		if host[i] == sub[0]:
+			if host.slice(i, i + sub_len) == sub:
+				return i
+	return -1
+	
 func find_seq(host: Array, sub: Array):
 	for i in range(len(host) - len(sub) + 1):
 		var success = true
@@ -161,160 +333,82 @@ func find_seq(host: Array, sub: Array):
 	return -1
 
 var last_mouse_state = [0, 0, 0]
-
 var synched = false
 
 func _process(delta: float) -> void:
 	if debug_fps_label:
 		fps_timer += delta
 		if fps_timer >= 1.0:
-			debug_fps_label.text = "FPS: " + str(fps_frame_count)
-			#if fps_skip_count > 0:
-			#	print("Skipped ", fps_skip_count, " frames in last second (FPS: ", fps_frame_count, ")")
-			#	fps_skip_count = 0
-			fps_frame_count = 0
+			var current_frames = 0
+			if _mutex:
+				_mutex.lock()
+				current_frames = fps_frame_count
+				fps_frame_count = 0
+				_mutex.unlock()
+				
+			debug_fps_label.text = "FPS: " + str(current_frames)
 			fps_timer -= 1.0
 			
-	#print("status :", current_custom_data[0])
-	if not (tcp and tcp.get_status() == StreamPeerTCP.STATUS_CONNECTED):
-		loading.visible = true
-	if not tcp:
-		if Time.get_ticks_msec() - last_message_time > RETRY_INTERVAL:
-			print("reconnecting - random id %08x" % randi())
-			reconnect()
-		return
-	if tcp.get_status() == StreamPeerTCP.STATUS_CONNECTING:
-		tcp.poll()
-	elif tcp.get_status() == StreamPeerTCP.STATUS_CONNECTED:
-		var screen_pos: Vector2i = Vector2i.ZERO
+	# Input polling and queueing
+	var screen_pos: Vector2i = Vector2i.ZERO
+	
+	if input_mode == InputMode.MOUSE:
+		screen_pos = current_screen_pos
 		
-		if input_mode == InputMode.MOUSE:
-			screen_pos = current_screen_pos
-			
-			# Enforce cursor state (moved back to _process to fight OS cursor overrides)
-			if is_processing_input():
-				if is_mouse_inside_display:
-					if Input.mouse_mode != Input.MOUSE_MODE_HIDDEN:
-						Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND)
-						Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
-				else:
-					if Input.mouse_mode != Input.MOUSE_MODE_VISIBLE:
-						Input.set_default_cursor_shape(Input.CURSOR_ARROW)
-						Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		else:
-			# Trackpad Mode
-			screen_pos = virtual_cursor_pos
-			if Input.mouse_mode != Input.MOUSE_MODE_VISIBLE:
-				Input.set_default_cursor_shape(Input.CURSOR_ARROW)
-				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-
-		var current_mouse_state = [screen_pos.x, screen_pos.y, current_mouse_mask]
-		if current_mouse_state != last_mouse_state:
-			# and 
-			tcp.put_data([
-				PIDOT_EVENT_MOUSEEV, current_mouse_state[0], current_mouse_state[1],
-				current_mouse_state[2], 0, 0, 0, 0
-			])
-			last_mouse_state = current_mouse_state
-		# recv screen
-		if not synched:
-			# RESYNC MODE
-			if tcp.get_available_bytes() > 0:
-				last_message_time = Time.get_ticks_msec()
-				var errdata = tcp.get_data(tcp.get_available_bytes())
-				if errdata[0] == OK:
-					buffer.append_array(errdata[1])
-					
-					# Search for SYNC_SEQ
-					var syncpoint = find_seq(buffer, SYNC_SEQ)
-					if syncpoint != -1:
-						print("Resync successful at index: ", syncpoint)
-						if len(buffer) >= syncpoint + PACKLEN:
-							var packet = buffer.slice(syncpoint, syncpoint + PACKLEN)
-							_process_packet(packet)
-							buffer = [] # Clear buffer completely
-							synched = true # Now we assume TCP stream is aligned for next read
-						else:
-							# Clean up garbage but keep waiting for rest of packet
-							if syncpoint > 0:
-								buffer = buffer.slice(syncpoint)
-					else:
-						# Keep buffer small if no sync found to prevent OOM
-						if len(buffer) > PACKLEN * 2:
-							buffer = buffer.slice(PACKLEN)
-
-		else:
-			# SYNCED MODE (Direct Read)
-			var avail = tcp.get_available_bytes()
-			if avail >= PACKLEN:
-				last_message_time = Time.get_ticks_msec()
-				loading.visible = false
-				
-				# GREEDY READ STRATEGY
-				# Calculate how many full frames are available
-				var num_frames = int(avail / PACKLEN)
-				
-				if num_frames > 1:
-					fps_skip_count += (num_frames - 1)
-					# Jump DIRECTLY to the start of the last frame
-					# discarding all previous frames in one go.
-					var bytes_to_skip = (num_frames - 1) * PACKLEN
-					tcp.get_data(bytes_to_skip)
-					
-				# Now read exactly one frame (the latest one)
-				# 1. Read Header + Meta
-				var header_len = len(SYNC_SEQ) + CUSTOM_BYTE_COUNT
-				var header_res = tcp.get_data(header_len)
-				
-				if header_res[0] == OK:
-					var header_data = header_res[1]
-					
-					# Fast Sync Check
-					# We rely on SYNC_SEQ being at the start
-					if header_data.slice(0, len(SYNC_SEQ)) == SYNC_SEQ_PBA:
-						# 2. Read Pixel Data Directly
-						var pixel_res = tcp.get_data(DISPLAY_BYTES)
-						if pixel_res[0] == OK:
-							# PASS DIRECTLY to image creation - NO COPY/SLICE!
-							# This saves ~50KB allocation per frame!
-							set_im_from_data(pixel_res[1])
-					else:
-						print("Sync lost! Entering resync mode.")
-						synched = false
-						# Put header back in buffer? No, just start buffering
-						buffer.append_array(header_data)
-				else:
-					# Read failed?
-					synched = false
-	elif Time.get_ticks_msec() - last_message_time > READ_TIMEOUT:
-		print("timeout detected")
-		reconnect()
+		# Enforce cursor state
+		if is_processing_input():
+			if is_mouse_inside_display:
+				if Input.mouse_mode != Input.MOUSE_MODE_HIDDEN:
+					Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND)
+					Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
+			else:
+				if Input.mouse_mode != Input.MOUSE_MODE_VISIBLE:
+					Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+					Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	else:
-		print("connection failed, status: ", tcp.get_status())
-		tcp = null
-		
-func _process_packet(data: PackedByteArray):
-	# Assuming data starts with SYNC_SEQ
+		# Trackpad Mode
+		screen_pos = virtual_cursor_pos
+		if Input.mouse_mode != Input.MOUSE_MODE_VISIBLE:
+			Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+	var current_mouse_state = [screen_pos.x, screen_pos.y, current_mouse_mask]
+	if current_mouse_state != last_mouse_state:
+		# Add to queue
+		_mutex.lock()
+		_input_queue.append([
+			PIDOT_EVENT_MOUSEEV, current_mouse_state[0], current_mouse_state[1],
+			current_mouse_state[2], 0, 0, 0, 0
+		])
+		_mutex.unlock()
+		last_mouse_state = current_mouse_state
+
+
+func _process_packet_thread(data: PackedByteArray):
 	var im_start = len(SYNC_SEQ) + CUSTOM_BYTE_COUNT
 	var im = data.slice(im_start, im_start + DISPLAY_BYTES)
-	set_im_from_data(im)
+	set_im_from_data_threaded(im)
 
 const SDL_KEYMAP: Dictionary = preload("res://sdl_keymap.json").data
 
 func send_key(id: int, down: bool, repeat: bool, mod: int):
-	if tcp:
-		# print("sending key ", id, " as ", down)
-		tcp.put_data([
+	if _mutex:
+		_mutex.lock()
+		_input_queue.append([
 			PIDOT_EVENT_KEYEV,
 			id, int(down), int(repeat),
 			mod & 0xff, (mod >> 8) & 0xff, 0, 0
 		])
+		_mutex.unlock()
+			
 func send_input(char: int):
-	if tcp:
-		tcp.put_data([
+	if _mutex:
+		_mutex.lock()
+		_input_queue.append([
 			PIDOT_EVENT_CHAREV, char,
 			0, 0, 0, 0, 0, 0
 		])
+		_mutex.unlock()
 
 var quit_overlay: Control
 # Controller Navigation
@@ -725,15 +819,14 @@ func _send_trackpad_click():
 	var screen_pos = Vector2i(virtual_cursor_pos)
 	# DOWN
 	var down_state = [screen_pos.x, screen_pos.y, 1] # 1 = Left Click
-	if tcp:
-		tcp.put_data([PIDOT_EVENT_MOUSEEV, down_state[0], down_state[1], down_state[2], 0, 0, 0, 0])
-	
-	# UP
-	var up_state = [screen_pos.x, screen_pos.y, 0]
-	if tcp:
-		tcp.put_data([PIDOT_EVENT_MOUSEEV, up_state[0], up_state[1], up_state[2], 0, 0, 0, 0])
-	
-	last_mouse_state = up_state
+	if _mutex:
+		_mutex.lock()
+		_input_queue.append([PIDOT_EVENT_MOUSEEV, down_state[0], down_state[1], down_state[2], 0, 0, 0, 0])
+		# UP
+		var up_state = [screen_pos.x, screen_pos.y, 0]
+		_input_queue.append([PIDOT_EVENT_MOUSEEV, up_state[0], up_state[1], up_state[2], 0, 0, 0, 0])
+		_mutex.unlock()
+		last_mouse_state = up_state
 	
 func _quit_app():
 	get_tree().quit()

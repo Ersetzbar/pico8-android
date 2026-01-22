@@ -148,12 +148,13 @@ DECLSPEC SDL_Window* SDLCALL SDL_CreateWindow(const char *title,
 }
 
 static Uint64 last_frame = 0;
-// this comes in at about 58fps
-#define MINFRAMEMS 17
+// this comes in at about 67fps
+#define MINFRAMEMS 15
 
-#define HEADER_SIZE 9 // "PICO8SYNC"
+//Ensure packet_buffer is 4-byte aligned
+#define HEADER_SIZE 11 // "PICO8SYNC__"
 #define META_SIZE 1
-#define PIXEL_SIZE (128*128*3)
+#define PIXEL_SIZE (128*128*4)
 #define TOTAL_PACKET_SIZE (HEADER_SIZE + META_SIZE + PIXEL_SIZE)
 
 // Single static buffer to avoid stack allocation and allow single-syscall writing
@@ -165,23 +166,26 @@ void pico_send_vid_data() {
         
         // Initialize header once
         if (!header_initialized) {
-            memcpy(packet_buffer, "PICO8SYNC", HEADER_SIZE);
+            memcpy(packet_buffer, "PICO8SYNC__", HEADER_SIZE);
             header_initialized = true;
         }
 
         // Optimized Pixel Copy (BGRA -> RGB) using pointer arithmetic
-        const uint8_t* src = (const uint8_t*)currentsurf->pixels;
+        const uint32_t* src32 = (uint32_t*)currentsurf->pixels;
         // Skip Header + Meta to get to pixel area
-        uint8_t* dst = packet_buffer + HEADER_SIZE + META_SIZE; 
+        uint32_t* dst32 = (uint32_t*)(packet_buffer + HEADER_SIZE + META_SIZE); 
         
         // Unrolling or vectorizing this loop could be next, but pointer math is already much faster than [i*4+...]
         // 128*128 = 16384 pixels
         for (int i = 0; i < 16384; i++) {
-            // Little Endian: B G R X in memory
-            *dst++ = src[2]; // R
-            *dst++ = src[1]; // G
-            *dst++ = src[0]; // B
-            src += 4;        // Skip Alpha/X
+			uint32_t pixel = src32[i];
+			// Shift bytes to convert BGRX to RGBA
+			// Assumes Little Endian: Source 0xXXRRGGBB -> Target 0xAABBGGRR
+			// (Note: Godot's RGBA8 in memory on Little Endian is actually 0xAA_BB_GG_RR)
+			*dst32++ = ((pixel & 0x00FF0000) >> 16) | // R
+					   (pixel & 0x0000FF00)         | // G
+					   ((pixel & 0x000000FF) << 16) | // B
+					   0xFF000000;                    // A (Alpha 25
         }
 
         uint8_t navstate = 0x00;
@@ -393,7 +397,7 @@ DECLSPEC SDL_Keymod SDLCALL SDL_GetModState(void) {
 
 DECLSPEC const Uint8 *SDLCALL SDL_GetKeyboardState(int *numkeys) {
     *numkeys = 256;
-    return &keystate;
+    return keystate;
 }
 
 // static bool recursive_malloc = false;

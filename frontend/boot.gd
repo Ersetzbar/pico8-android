@@ -73,7 +73,7 @@ func _ready() -> void:
 	else:
 		request_storage_permission()
 
-const BOOTSTRAP_PACKAGE_VERSION = "4"
+const BOOTSTRAP_PACKAGE_VERSION = "5"
 
 func setup():
 	set_ui_state(false, false, true) # permission_ui=false, select_zip_ui=false, progress_ui=true
@@ -84,7 +84,6 @@ func setup():
 
 	var tar_path = APPDATA_FOLDER + "/package.tar.gz"
 	var tar_path_godot = "user://package.tar.gz"
-	var pico_path = APPDATA_FOLDER + "/pico8.zip"
 	var pico_path_godot = "user://pico8.zip"
 	
 	DirAccess.make_dir_recursive_absolute(PUBLIC_FOLDER + "/logs")

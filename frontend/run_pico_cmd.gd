@@ -35,9 +35,6 @@ func _ready() -> void:
 	OS.execute(PicoBootManager.BIN_PATH + "/chmod", ["755", busybox_path])
 	OS.execute(PicoBootManager.BIN_PATH + "/chmod", ["755", script_path])
 	
-	# Explicitly set HOME to the package directory to fix "Failed to get home directory" matches
-	var env_setup = "export HOME=" + pkg_path + "; "
-	
 	match execution_mode:
 		ExecutionMode.PICO8:
 			# Check if we have an initial intention (cold boot)
@@ -189,7 +186,7 @@ func _decode_and_fix_path(uri: String) -> String:
 		var decoded_path = uri.uri_decode()
 			
 		# triple encoded
-		if "file%3A" in decoded_path or "http%3A" in decoded_path or 	"http%3A" in decoded_path:
+		if "file%3A" in decoded_path or "http%3A" in decoded_path or "http%3A" in decoded_path:
 			decoded_path = decoded_path.uri_decode()
 
 		decoded_path = decoded_path.uri_decode()
@@ -236,7 +233,7 @@ func _kill_all_pico_processes() -> void:
 	OS.execute(PicoBootManager.BIN_PATH + "/sh", ["-c", kill_cmd], [])
 	print("Executed cleanup kill command: " + kill_cmd)
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	match restart_state:
 		RestartState.IDLE:
 			# Normal monitoring - Throttled to 1s
