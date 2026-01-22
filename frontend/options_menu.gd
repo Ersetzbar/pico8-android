@@ -55,6 +55,10 @@ func _ready() -> void:
 		%ButtonSupport.pressed.connect(_on_support_pressed)
 	%ButtonSave.pressed.connect(save_config)
 	
+	# Accordion Toggles
+	%BtnDisplayToggle.pressed.connect(_on_section_toggled.bind(%BtnDisplayToggle, %ContainerDisplay))
+	%BtnControlsToggle.pressed.connect(_on_section_toggled.bind(%BtnControlsToggle, %ContainerControls))
+	
 	# Settings are applied via load_config(), no need to manually set button_pressed here if sync works
 	# But we need to ensure the UI reflects the loaded state.
 	# load_config handles: PicoVideoStreamer settings update AND UI element update.
@@ -173,29 +177,29 @@ func _update_layout():
 	header_label.add_theme_font_size_override("font_size", dynamic_font_size)
 	
 	# Scale Icon
-	var icon_size = dynamic_font_size * 1.5
+	var icon_size = dynamic_font_size * 1.3
 	%Icon.custom_minimum_size = Vector2(icon_size, icon_size)
 	
 	# 2. Haptic Row
-	_style_option_row(%ButtonHaptic, %ToggleHaptic, $SlidePanel/ScrollContainer/VBoxContainer/HapticRow/WrapperHaptic, dynamic_font_size, scale_factor)
+	_style_option_row(%ButtonHaptic, %ToggleHaptic, $SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/HapticRow/WrapperHaptic, dynamic_font_size, scale_factor)
 	
 	# 3. Keyboard Row
-	_style_option_row(%ButtonKeyboard, %ToggleKeyboard, $SlidePanel/ScrollContainer/VBoxContainer/KeyboardRow/WrapperKeyboard, dynamic_font_size, scale_factor)
+	_style_option_row(%ButtonKeyboard, %ToggleKeyboard, $SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/KeyboardRow/WrapperKeyboard, dynamic_font_size, scale_factor)
 
 	# 4. Integer Scaling Row
 	# Override text just in case .tscn is stale
 	%ButtonShowControls.text = "Always Show Controls"
 	
-	_style_option_row(%ButtonIntegerScaling, %ToggleIntegerScaling, $SlidePanel/ScrollContainer/VBoxContainer/IntegerScalingRow/WrapperIntegerScaling, dynamic_font_size, scale_factor)
+	_style_option_row(%ButtonIntegerScaling, %ToggleIntegerScaling, $SlidePanel/ScrollContainer/VBoxContainer/SectionDisplay/ContainerDisplay/ContentDisplay/IntegerScalingRow/WrapperIntegerScaling, dynamic_font_size, scale_factor)
 
 	# 5. Show Controls Row
-	_style_option_row(%ButtonShowControls, %ToggleShowControls, $SlidePanel/ScrollContainer/VBoxContainer/ShowControlsRow/WrapperShowControls, dynamic_font_size, scale_factor)
+	_style_option_row(%ButtonShowControls, %ToggleShowControls, $SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/ShowControlsRow/WrapperShowControls, dynamic_font_size, scale_factor)
 
 	# 6. Background Color Row
-	_style_option_row(%ButtonBgColor, %ColorPickerBG, $SlidePanel/ScrollContainer/VBoxContainer/BgColorRow/WrapperBgColor, dynamic_font_size, scale_factor)
+	_style_option_row(%ButtonBgColor, %ColorPickerBG, $SlidePanel/ScrollContainer/VBoxContainer/SectionDisplay/ContainerDisplay/ContentDisplay/BgColorRow/WrapperBgColor, dynamic_font_size, scale_factor)
 
 	# 7. Input Mode Row
-	_style_option_row(%ButtonInputMode, %ToggleInputMode, $SlidePanel/ScrollContainer/VBoxContainer/InputModeRow/WrapperInputMode, dynamic_font_size, scale_factor)
+	_style_option_row(%ButtonInputMode, %ToggleInputMode, $SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/InputModeRow/WrapperInputMode, dynamic_font_size, scale_factor)
 
 	# 7. Sensitivity Row
 	%LabelSensitivity.add_theme_font_size_override("font_size", dynamic_font_size)
@@ -215,8 +219,15 @@ func _update_layout():
 		# Godot's expand_icon fits to height, which follows font size mostly
 	%ButtonSave.add_theme_font_size_override("font_size", dynamic_font_size)
 	
+	%ButtonSave.add_theme_font_size_override("font_size", dynamic_font_size)
+	
 	# 5. Version Label (slightly smaller)
 	%VersionLabel.add_theme_font_size_override("font_size", max(10, int(dynamic_font_size * 0.8)))
+
+	# --- Style Accordion Headers ---
+	var header_font_size = int(dynamic_font_size * 1.1)
+	%BtnDisplayToggle.add_theme_font_size_override("font_size", header_font_size)
+	%BtnControlsToggle.add_theme_font_size_override("font_size", header_font_size)
 
 	# --- Resize Panel ---
 	# Wait for layout to process to get correct width
@@ -495,7 +506,7 @@ func _on_integer_scaling_toggled(toggled_on: bool):
 	# Force Arranger update
 	var arranger = get_tree().root.get_node_or_null("Main/Arranger")
 	if arranger:
-		arranger._on_resize()
+		arranger.dirty = true
 
 func _on_show_controls_toggled(toggled_on: bool):
 	PicoVideoStreamer.set_always_show_controls(toggled_on)
@@ -510,7 +521,6 @@ func _on_bg_color_picked(color: Color):
 func save_config():
 	var config = ConfigFile.new()
 	config.set_value("settings", "haptic_enabled", PicoVideoStreamer.get_haptic_enabled())
-	config.set_value("settings", "trackpad_sensitivity", PicoVideoStreamer.get_trackpad_sensitivity())
 	config.set_value("settings", "trackpad_sensitivity", PicoVideoStreamer.get_trackpad_sensitivity())
 	config.set_value("settings", "integer_scaling_enabled", PicoVideoStreamer.get_integer_scaling_enabled())
 	config.set_value("settings", "always_show_controls", PicoVideoStreamer.get_always_show_controls())
@@ -538,7 +548,6 @@ func load_config():
 	if err == OK:
 		haptic = config.get_value("settings", "haptic_enabled", false)
 		sensitivity = config.get_value("settings", "trackpad_sensitivity", 0.5)
-		integer_scaling = config.get_value("settings", "integer_scaling_enabled", true)
 		integer_scaling = config.get_value("settings", "integer_scaling_enabled", true)
 		always_show = config.get_value("settings", "always_show_controls", false)
 		
@@ -589,3 +598,11 @@ func _on_app_settings_pressed():
 
 func _on_support_pressed():
 	OS.shell_open("https://ko-fi.com/macs34661")
+
+func _on_section_toggled(btn: Button, container: Control):
+	var should_be_visible = !container.visible
+	container.visible = should_be_visible
+	btn.text = ("🔽" if should_be_visible else "▶️ ") + btn.text.substr(2)
+	
+	# Animate? Simple toggle is robust for now.
+	# If invisible, it shrinks automatically due to VBoxContainer.
