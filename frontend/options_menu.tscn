@@ -1,7 +1,10 @@
-[gd_scene load_steps=3 format=3 uid="uid://b6p2v8g5q4x7y"]
+[gd_scene load_steps=6 format=3 uid="uid://b6p2v8g5q4x7y"]
 
 [ext_resource type="Script" uid="uid://bl8wgg60ombjh" path="res://options_menu.gd" id="1_options"]
 [ext_resource type="Texture2D" uid="uid://cfy8e87xc6p0b" path="res://assets/cog_icon.png" id="2_cog"]
+[ext_resource type="Texture2D" uid="uid://y1xbmusqsqd4" path="res://assets/icon_coffee.png" id="3_coffee"]
+[ext_resource type="Texture2D" uid="uid://ctbv6igcjngg4" path="res://assets/icon_floppy.png" id="4_floppy"]
+[ext_resource type="Texture2D" uid="uid://chyjiv8phiah7" path="res://assets/icon_link.png" id="5_link"]
 
 [node name="OptionsMenu" type="CanvasLayer"]
 script = ExtResource("1_options")
@@ -236,6 +239,19 @@ text = "            "
 layout_mode = 2
 size_flags_vertical = 3
 
+[node name="ButtonSupport" type="Button" parent="SlidePanel/ScrollContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.8, 0.8, 0.8, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+text = "   Support the Project"
+icon = ExtResource("3_coffee")
+flat = true
+alignment = 0
+expand_icon = true
+
 [node name="ButtonAppSettings" type="Button" parent="SlidePanel/ScrollContainer/VBoxContainer"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -243,8 +259,11 @@ theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
 theme_override_colors/font_pressed_color = Color(0.8, 0.8, 0.8, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
-text = "Deep Links Settings"
+text = "   Deep Links Settings"
+icon = ExtResource("5_link")
 flat = true
+alignment = 0
+expand_icon = true
 
 [node name="ButtonSave" type="Button" parent="SlidePanel/ScrollContainer/VBoxContainer"]
 unique_name_in_owner = true
@@ -253,8 +272,11 @@ theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
 theme_override_colors/font_pressed_color = Color(0.8, 0.8, 0.8, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
-text = "Save Settings"
+text = "   Save Settings"
+icon = ExtResource("4_floppy")
 flat = true
+alignment = 0
+expand_icon = true
 
 [node name="EdgeHandler" type="Control" parent="."]
 layout_mode = 3

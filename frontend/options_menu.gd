@@ -48,6 +48,8 @@ func _ready() -> void:
 		%SliderSensitivity.value_changed.connect(_on_sensitivity_changed)
 
 	%ButtonAppSettings.pressed.connect(_on_app_settings_pressed)
+	if %ButtonSupport:
+		%ButtonSupport.pressed.connect(_on_support_pressed)
 	%ButtonSave.pressed.connect(save_config)
 	
 	# Settings are applied via load_config(), no need to manually set button_pressed here if sync works
@@ -201,6 +203,10 @@ func _update_layout():
 	
 	# 4. Save Buttons
 	%ButtonAppSettings.add_theme_font_size_override("font_size", dynamic_font_size)
+	if %ButtonSupport:
+		%ButtonSupport.add_theme_font_size_override("font_size", dynamic_font_size)
+		# Ensure icon scales comfortably with text
+		# Godot's expand_icon fits to height, which follows font size mostly
 	%ButtonSave.add_theme_font_size_override("font_size", dynamic_font_size)
 	
 	# 5. Version Label (slightly smaller)
@@ -446,7 +452,7 @@ func save_config():
 	
 	# Visual Feedback
 	var orig_text = %ButtonSave.text
-	%ButtonSave.text = "Saved!"
+	%ButtonSave.text = "   Saved!"
 	%ButtonSave.release_focus() # Optional style choice, but keeps it clean
 	%ButtonSave.grab_focus() # Restore focus so nav isn't lost
 	
@@ -493,6 +499,8 @@ func load_config():
 		%ToggleKeyboard.button_pressed = KBMan.get_current_keyboard_type() == KBMan.KBType.FULL
 
 func _on_app_settings_pressed():
-	# Open Android App Info page using Native Plugin
 	if Applinks:
 		Applinks.open_app_settings()
+
+func _on_support_pressed():
+	OS.shell_open("https://ko-fi.com/macs34661")
