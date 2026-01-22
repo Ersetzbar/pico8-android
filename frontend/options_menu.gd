@@ -33,12 +33,15 @@ func _ready() -> void:
 		%ToggleIntegerScaling.toggled.connect(_on_integer_scaling_toggled)
 	if not %ToggleShowControls.toggled.is_connected(_on_show_controls_toggled):
 		%ToggleShowControls.toggled.connect(_on_show_controls_toggled)
+	if not %ColorPickerBG.color_changed.is_connected(_on_bg_color_picked):
+		%ColorPickerBG.color_changed.connect(_on_bg_color_picked)
 
 	# Labels (tap to toggle) - Now using Buttons
 	%ButtonHaptic.pressed.connect(_on_label_pressed.bind(%ToggleHaptic))
 	%ButtonKeyboard.pressed.connect(_on_label_pressed.bind(%ToggleKeyboard))
 	%ButtonIntegerScaling.pressed.connect(_on_label_pressed.bind(%ToggleIntegerScaling))
 	%ButtonShowControls.pressed.connect(_on_label_pressed.bind(%ToggleShowControls))
+	%ButtonBgColor.pressed.connect(func(): %ColorPickerBG.get_popup().popup_centered())
 	%ButtonInputMode.pressed.connect(_on_label_pressed.bind(%ToggleInputMode))
 	
 	if not %ToggleInputMode.toggled.is_connected(_on_input_mode_toggled):
@@ -188,7 +191,10 @@ func _update_layout():
 	# 5. Show Controls Row
 	_style_option_row(%ButtonShowControls, %ToggleShowControls, $SlidePanel/ScrollContainer/VBoxContainer/ShowControlsRow/WrapperShowControls, dynamic_font_size, scale_factor)
 
-	# 6. Input Mode Row
+	# 6. Background Color Row
+	_style_option_row(%ButtonBgColor, %ColorPickerBG, $SlidePanel/ScrollContainer/VBoxContainer/BgColorRow/WrapperBgColor, dynamic_font_size, scale_factor)
+
+	# 7. Input Mode Row
 	_style_option_row(%ButtonInputMode, %ToggleInputMode, $SlidePanel/ScrollContainer/VBoxContainer/InputModeRow/WrapperInputMode, dynamic_font_size, scale_factor)
 
 	# 7. Sensitivity Row
@@ -229,8 +235,59 @@ func _update_layout():
 		panel.position.x = 0
 	else:
 		panel.position.x = - final_width
+		
+	# Resize Color Picker Popup
+	if %ColorPickerBG:
+		var popup = %ColorPickerBG.get_picker().get_window() if %ColorPickerBG.get_picker().get_window() else %ColorPickerBG.get_popup()
+		if not popup:
+			popup = %ColorPickerBG.get_popup()
+			
+			
+		# Set a reasonable base size (Reduced 30% further)
+		var base_w = 175.0
+		var base_h = 245.0
+		var picker = %ColorPickerBG.get_picker()
+		picker.custom_minimum_size = Vector2(base_w, base_h)
+		popup.size = Vector2(base_w, base_h)
+		
+		# Calculate Safe Scale
+		# Ensure base_h * scale <= viewport_size.y * 0.85 (more margin)
+		var max_scale_y = (viewport_size.y * 0.4) / base_h
+		var max_scale_x = (viewport_size.x * 0.4) / base_w
+		var safe_scale = min(scale_factor, min(max_scale_x, max_scale_y))
+		
+		# Enable standard window scaling with clamp
+		popup.content_scale_factor = safe_scale
+		popup.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+		
+		# Remove previous manual font override to avoid double-scaling if window scale works
+		picker.remove_theme_font_size_override("font_size")
+		
+		# Force Opaque Background
+		var bg_style = StyleBoxFlat.new()
+		bg_style.bg_color = Color(0.1, 0.1, 0.1, 1.0) # Dark Opaque Grey
+		bg_style.border_width_left = 2
+		bg_style.border_width_top = 2
+		bg_style.border_width_right = 2
+		bg_style.border_width_bottom = 2
+		bg_style.border_color = Color.BLACK
+		popup.add_theme_stylebox_override("panel", bg_style)
+		
+		# Add Default Color Preset
+		var default_bg = Color(0.0078, 0.0157, 0.0235, 1)
+		if not picker.get_presets().has(default_bg):
+			picker.add_preset(default_bg)
+			
+		# Simplify Picker UI
+		picker.edit_alpha = false
+		picker.can_add_swatches = false
+		picker.sampler_visible = false
+		picker.color_modes_visible = false
+		picker.sliders_visible = false # Hide huge sliders
+		picker.hex_visible = true # Keep Hex for precision
+		picker.presets_visible = true
 	
-func _style_option_row(label_btn: Button, toggle: CheckButton, wrapper: Control, font_size: int, scale_factor: float):
+func _style_option_row(label_btn: Button, toggle: Control, wrapper: Control, font_size: int, scale_factor: float):
 	# Style Label Button
 	label_btn.add_theme_font_size_override("font_size", font_size)
 	
@@ -258,6 +315,11 @@ func _style_option_row(label_btn: Button, toggle: CheckButton, wrapper: Control,
 	var child_scaled_height = natural_size.y * scale_factor
 	var y_offset = (reserved_height - child_scaled_height) / 2.0
 	toggle.position.y = y_offset
+
+	# Special handling for ColorPickerButton to remove text/icon if any default
+	if toggle is ColorPickerButton:
+		toggle.text = ""
+		toggle.icon = null
 
 func open_menu():
 	is_open = true
@@ -442,12 +504,17 @@ func _on_show_controls_toggled(toggled_on: bool):
 	if arranger:
 		arranger.dirty = true
 
+func _on_bg_color_picked(color: Color):
+	RenderingServer.set_default_clear_color(color)
+
 func save_config():
 	var config = ConfigFile.new()
 	config.set_value("settings", "haptic_enabled", PicoVideoStreamer.get_haptic_enabled())
 	config.set_value("settings", "trackpad_sensitivity", PicoVideoStreamer.get_trackpad_sensitivity())
+	config.set_value("settings", "trackpad_sensitivity", PicoVideoStreamer.get_trackpad_sensitivity())
 	config.set_value("settings", "integer_scaling_enabled", PicoVideoStreamer.get_integer_scaling_enabled())
 	config.set_value("settings", "always_show_controls", PicoVideoStreamer.get_always_show_controls())
+	config.set_value("settings", "bg_color", %ColorPickerBG.color)
 	config.save(CONFIG_PATH)
 	
 	# Visual Feedback
@@ -472,7 +539,25 @@ func load_config():
 		haptic = config.get_value("settings", "haptic_enabled", false)
 		sensitivity = config.get_value("settings", "trackpad_sensitivity", 0.5)
 		integer_scaling = config.get_value("settings", "integer_scaling_enabled", true)
+		integer_scaling = config.get_value("settings", "integer_scaling_enabled", true)
 		always_show = config.get_value("settings", "always_show_controls", false)
+		
+		# Migration: Check for old oled_mode first
+		var default_bg = Color(0.0078, 0.0157, 0.0235, 1)
+		var saved_bg = config.get_value("settings", "bg_color", null)
+		
+		if saved_bg == null:
+			# Check for legacy OLED setting
+			if config.has_section_key("settings", "oled_mode"):
+				var oled_active = config.get_value("settings", "oled_mode", false)
+				saved_bg = Color.BLACK if oled_active else default_bg
+			else:
+				saved_bg = default_bg
+		
+		# Apply BG Color
+		if %ColorPickerBG:
+			%ColorPickerBG.color = saved_bg
+			_on_bg_color_picked(saved_bg)
 	
 	# Apply Settings
 	PicoVideoStreamer.set_haptic_enabled(haptic)

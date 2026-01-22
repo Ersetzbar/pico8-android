@@ -170,6 +170,34 @@ unique_name_in_owner = true
 layout_mode = 0
 focus_mode = 0
 
+[node name="BgColorRow" type="HBoxContainer" parent="SlidePanel/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="ButtonBgColor" type="Button" parent="SlidePanel/ScrollContainer/VBoxContainer/BgColorRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 1
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.8, 0.8, 0.8, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+text = "Background Color"
+flat = true
+alignment = 0
+
+[node name="WrapperBgColor" type="Control" parent="SlidePanel/ScrollContainer/VBoxContainer/BgColorRow"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 4
+
+[node name="ColorPickerBG" type="ColorPickerButton" parent="SlidePanel/ScrollContainer/VBoxContainer/BgColorRow/WrapperBgColor"]
+unique_name_in_owner = true
+layout_mode = 0
+focus_mode = 0
+color = Color(0.00784314, 0.0156863, 0.0235294, 1)
+edit_alpha = false
+
 [node name="InputModeRow" type="HBoxContainer" parent="SlidePanel/ScrollContainer/VBoxContainer"]
 layout_mode = 2
 
