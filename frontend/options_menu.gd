@@ -20,6 +20,10 @@ var swipe_threshold = 50.0
 const CONFIG_PATH = "user://settings.cfg"
 
 func _ready() -> void:
+	# Hide immediately to prevent flash
+	if panel:
+		panel.position.x = -2000.0
+	
 	# Load config first to set initial state correctly
 	load_config()
 

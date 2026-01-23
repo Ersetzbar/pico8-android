@@ -234,9 +234,12 @@ func _update_layout():
 	# Keyboard Anchor Control
 	if kb_anchor != null:
 		var always_show = PicoVideoStreamer.get_always_show_controls()
+		var is_full_kb = (KBMan.get_current_keyboard_type() == KBMan.KBType.FULL)
 		
 		if is_landscape:
 			kb_anchor.visible = false # Always hide portrait anchor in landscape
+		elif is_full_kb:
+			kb_anchor.visible = true # Always show if Full Keyboard is requested (override controller hide)
 		elif is_controller_connected and not always_show:
 			kb_anchor.visible = false
 		else:
