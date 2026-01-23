@@ -431,6 +431,13 @@ static func set_haptic_enabled(enabled: bool):
 static func get_haptic_enabled() -> bool:
 	return haptic_enabled
 
+static var swap_zx_enabled: bool = false
+static func set_swap_zx_enabled(enabled: bool):
+	swap_zx_enabled = enabled
+
+static func get_swap_zx_enabled() -> bool:
+	return swap_zx_enabled
+
 enum InputMode {MOUSE, TRACKPAD}
 static var input_mode: InputMode = InputMode.MOUSE
 
@@ -561,7 +568,7 @@ const SWIPE_DISTANCE_RATIO = 0.05 # Swipe must travel 5% of screen height
 const SWIPE_EDGE_RATIO = 0.15 # Only trigger if starting from bottom 15%
 
 # Trackpad refinements
-static var trackpad_sensitivity: float = 0.5
+static var trackpad_sensitivity: float = 0.3
 static func set_trackpad_sensitivity(val: float):
 	trackpad_sensitivity = val
 
@@ -724,8 +731,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				
 		var key_id = ""
 		match event.button_index:
-			JoyButton.JOY_BUTTON_A, JoyButton.JOY_BUTTON_Y: key_id = "Z" # Pico-8 O
-			JoyButton.JOY_BUTTON_B, JoyButton.JOY_BUTTON_X: key_id = "X" # Pico-8 X
+			JoyButton.JOY_BUTTON_A, JoyButton.JOY_BUTTON_Y: key_id = "X" if swap_zx_enabled else "Z" # Pico-8 O (or X if swapped)
+			JoyButton.JOY_BUTTON_B, JoyButton.JOY_BUTTON_X: key_id = "Z" if swap_zx_enabled else "X" # Pico-8 X (or O if swapped)
 			JoyButton.JOY_BUTTON_START, JoyButton.JOY_BUTTON_RIGHT_SHOULDER: key_id = "P" # Pause
 			JoyButton.JOY_BUTTON_BACK, JoyButton.JOY_BUTTON_GUIDE:
 				key_id = "IntentExit" if is_intent_session else "Escape" # Menu / Exit

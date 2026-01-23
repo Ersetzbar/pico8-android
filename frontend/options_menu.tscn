@@ -23,7 +23,7 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 7.0
-offset_right = -4.0
+offset_right = -5.0
 grow_horizontal = 2
 grow_vertical = 2
 follow_focus = true
@@ -85,7 +85,7 @@ alignment = 0
 [node name="ContainerDisplay" type="MarginContainer" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionDisplay"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_constants/margin_left = 40
+theme_override_constants/margin_left = 30
 
 [node name="ContentDisplay" type="VBoxContainer" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionDisplay/ContainerDisplay"]
 layout_mode = 2
@@ -163,7 +163,7 @@ alignment = 0
 [node name="ContainerControls" type="MarginContainer" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionControls"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_constants/margin_left = 40
+theme_override_constants/margin_left = 30
 
 [node name="ContentControls" type="VBoxContainer" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls"]
 layout_mode = 2
@@ -191,6 +191,32 @@ size_flags_horizontal = 8
 size_flags_vertical = 4
 
 [node name="ToggleHaptic" type="CheckButton" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/HapticRow/WrapperHaptic"]
+unique_name_in_owner = true
+layout_mode = 0
+focus_mode = 0
+
+[node name="SwapZXRow" type="HBoxContainer" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls"]
+layout_mode = 2
+
+[node name="ButtonSwapZX" type="Button" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/SwapZXRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 1
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.8, 0.8, 0.8, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+text = "Swap O/X on gamepads"
+flat = true
+alignment = 0
+
+[node name="WrapperSwapZX" type="Control" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/SwapZXRow"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 4
+
+[node name="ToggleSwapZX" type="CheckButton" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/SwapZXRow/WrapperSwapZX"]
 unique_name_in_owner = true
 layout_mode = 0
 focus_mode = 0
@@ -233,7 +259,7 @@ theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
 theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
 theme_override_colors/font_pressed_color = Color(0.8, 0.8, 0.8, 1)
 theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
-text = "Hide UI w/ Controller"
+text = "Always Show Controls"
 flat = true
 alignment = 0
 
@@ -284,22 +310,28 @@ mouse_filter = 1
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 text = "T.Sensitivity"
 horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="WrapperSensitivity" type="HBoxContainer" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/SensitivityRow"]
 layout_mode = 2
-size_flags_horizontal = 8
+size_flags_horizontal = 0
 size_flags_vertical = 4
 theme_override_constants/separation = 10
 
-[node name="SliderSensitivity" type="HSlider" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/SensitivityRow/WrapperSensitivity"]
+[node name="SliderScaler" type="Control" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/SensitivityRow/WrapperSensitivity"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+
+[node name="SliderSensitivity" type="HSlider" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/SensitivityRow/WrapperSensitivity/SliderScaler"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(80, 0)
-layout_mode = 2
+layout_mode = 0
 size_flags_vertical = 4
 min_value = 0.1
 max_value = 2.0
 step = 0.1
-value = 0.5
+value = 0.30000000000000004
 
 [node name="LabelSensitivityValue" type="Label" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/SensitivityRow/WrapperSensitivity"]
 unique_name_in_owner = true
@@ -316,7 +348,15 @@ text = "            "
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="ButtonSupport" type="Button" parent="SlidePanel/ScrollContainer/VBoxContainer"]
+[node name="ContainerButtons" type="MarginContainer" parent="SlidePanel/ScrollContainer/VBoxContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/margin_left = 30
+
+[node name="ButtonsContainer" type="VBoxContainer" parent="SlidePanel/ScrollContainer/VBoxContainer/ContainerButtons"]
+layout_mode = 2
+
+[node name="ButtonSupport" type="Button" parent="SlidePanel/ScrollContainer/VBoxContainer/ContainerButtons/ButtonsContainer"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
@@ -329,7 +369,7 @@ flat = true
 alignment = 0
 expand_icon = true
 
-[node name="ButtonAppSettings" type="Button" parent="SlidePanel/ScrollContainer/VBoxContainer"]
+[node name="ButtonAppSettings" type="Button" parent="SlidePanel/ScrollContainer/VBoxContainer/ContainerButtons/ButtonsContainer"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
@@ -342,7 +382,7 @@ flat = true
 alignment = 0
 expand_icon = true
 
-[node name="ButtonSave" type="Button" parent="SlidePanel/ScrollContainer/VBoxContainer"]
+[node name="ButtonSave" type="Button" parent="SlidePanel/ScrollContainer/VBoxContainer/ContainerButtons/ButtonsContainer"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)

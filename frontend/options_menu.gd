@@ -33,6 +33,8 @@ func _ready() -> void:
 		%ToggleHaptic.toggled.connect(_on_haptic_toggled)
 	if not %ToggleKeyboard.toggled.is_connected(_on_keyboard_toggled):
 		%ToggleKeyboard.toggled.connect(_on_keyboard_toggled)
+	if not %ToggleSwapZX.toggled.is_connected(_on_swap_zx_toggled):
+		%ToggleSwapZX.toggled.connect(_on_swap_zx_toggled)
 	if not %ToggleIntegerScaling.toggled.is_connected(_on_integer_scaling_toggled):
 		%ToggleIntegerScaling.toggled.connect(_on_integer_scaling_toggled)
 	if not %ToggleShowControls.toggled.is_connected(_on_show_controls_toggled):
@@ -42,6 +44,7 @@ func _ready() -> void:
 
 	# Labels (tap to toggle) - Now using Buttons
 	%ButtonHaptic.pressed.connect(_on_label_pressed.bind(%ToggleHaptic))
+	%ButtonSwapZX.pressed.connect(_on_label_pressed.bind(%ToggleSwapZX))
 	%ButtonKeyboard.pressed.connect(_on_label_pressed.bind(%ToggleKeyboard))
 	%ButtonIntegerScaling.pressed.connect(_on_label_pressed.bind(%ToggleIntegerScaling))
 	%ButtonShowControls.pressed.connect(_on_label_pressed.bind(%ToggleShowControls))
@@ -167,7 +170,7 @@ func _update_layout():
 	# IMPROVED: Use min dimension to keep text readable in landscape
 	# Base on 5% of smaller dimension, clamped to at least 24px
 	var min_dim = min(viewport_size.x, viewport_size.y)
-	var dynamic_font_size = int(max(24, min_dim * 0.05))
+	var dynamic_font_size = int(max(24, min_dim * 0.04))
 	
 	# Scale Factors
 	# Keep icon readable but scaled relative to the new small font
@@ -184,16 +187,19 @@ func _update_layout():
 	var icon_size = dynamic_font_size * 1.3
 	%Icon.custom_minimum_size = Vector2(icon_size, icon_size)
 	
+	%ContainerDisplay.add_theme_constant_override("margin_left", int(30 * scale_factor))
+	%ContainerControls.add_theme_constant_override("margin_left", int(30 * scale_factor))
+	%ContainerButtons.add_theme_constant_override("margin_left", int(30 * scale_factor))
 	# 2. Haptic Row
 	_style_option_row(%ButtonHaptic, %ToggleHaptic, $SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/HapticRow/WrapperHaptic, dynamic_font_size, scale_factor)
 	
+	# 2a. Swap O/X Row
+	_style_option_row(%ButtonSwapZX, %ToggleSwapZX, $SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/SwapZXRow/WrapperSwapZX, dynamic_font_size, scale_factor)
+
 	# 3. Keyboard Row
 	_style_option_row(%ButtonKeyboard, %ToggleKeyboard, $SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/KeyboardRow/WrapperKeyboard, dynamic_font_size, scale_factor)
 
 	# 4. Integer Scaling Row
-	# Override text just in case .tscn is stale
-	%ButtonShowControls.text = "Always Show Controls"
-	
 	_style_option_row(%ButtonIntegerScaling, %ToggleIntegerScaling, $SlidePanel/ScrollContainer/VBoxContainer/SectionDisplay/ContainerDisplay/ContentDisplay/IntegerScalingRow/WrapperIntegerScaling, dynamic_font_size, scale_factor)
 
 	# 5. Show Controls Row
@@ -210,9 +216,14 @@ func _update_layout():
 	%LabelSensitivityValue.add_theme_font_size_override("font_size", dynamic_font_size)
 	# Scale slider custom minimum width?
 	var slider = %SliderSensitivity
-	var slider_width = 100.0 * scale_factor
-	slider.custom_minimum_size.x = slider_width
-	# Note: HSlider height scales reasonably well automatically or via theme, but we can enforce logic if needed.
+	var slider_scaler = %SliderScaler
+	
+	# Reset base size (unscaled)
+	slider.scale = Vector2(scale_factor, scale_factor)
+	
+	# Adjust wrapper to hold scaled slider
+	var scaled_size = slider.size * scale_factor
+	slider_scaler.custom_minimum_size = scaled_size
 
 	
 	# 4. Save Buttons
@@ -240,8 +251,7 @@ func _update_layout():
 	# Adjust panel width if content is wider (due to scaling)
 	var content_min_width = $SlidePanel/ScrollContainer/VBoxContainer.get_combined_minimum_size().x
 	# Add some padding (margin of proper fit)
-	var required_width = content_min_width + 50
-	
+	var required_width = content_min_width + 10
 	# Minimum safe width
 	var final_width = max(required_width, min(500, viewport_size.x * 0.5))
 	
@@ -319,9 +329,9 @@ func _style_option_row(label_btn: Button, toggle: Control, wrapper: Control, fon
 	
 	# Resize Wrapper to fit scaled toggle
 	# Use a fixed generous height to ensure centering room, usually 40 is good base
-	var wrapper_base_height = max(40.0, natural_size.y)
+	var wrapper_base_height = max(30.0, natural_size.y)
 	
-	var reserved_width = 80.0 * scale_factor # generous width
+	var reserved_width = 70.0 * scale_factor # generous width
 	var reserved_height = wrapper_base_height * scale_factor
 	
 	wrapper.custom_minimum_size = Vector2(reserved_width, reserved_height)
@@ -467,6 +477,9 @@ func _navigate_focus(side: Side):
 func _on_haptic_toggled(toggled_on: bool):
 	PicoVideoStreamer.set_haptic_enabled(toggled_on)
 
+func _on_swap_zx_toggled(toggled_on: bool):
+	PicoVideoStreamer.set_swap_zx_enabled(toggled_on)
+
 func _on_keyboard_toggled(toggled_on: bool):
 	# Toggle between Full and Gaming keyboard logic
 	KBMan.set_full_keyboard_enabled(toggled_on)
@@ -493,17 +506,17 @@ func _update_input_mode_label(is_trackpad: bool):
 	
 	if %SliderSensitivity:
 		%SliderSensitivity.editable = is_trackpad
-		%SliderSensitivity.modulate.a = 1.0 if is_trackpad else 0.5
+		%SliderSensitivity.modulate.a = 1.0 if is_trackpad else 0.3
 		
 	if %LabelSensitivity:
-		%LabelSensitivity.modulate.a = 1.0 if is_trackpad else 0.5
+		%LabelSensitivity.modulate.a = 1.0 if is_trackpad else 0.3
 		
 	if %LabelSensitivityValue:
-		%LabelSensitivityValue.modulate.a = 1.0 if is_trackpad else 0.5
+		%LabelSensitivityValue.modulate.a = 1.0 if is_trackpad else 0.3
 
 func _on_sensitivity_changed(val: float):
-	PicoVideoStreamer.set_trackpad_sensitivity(val)
-	%LabelSensitivityValue.text = str(val).left(3) # Limit decimal places
+	PicoVideoStreamer.set_trackpad_sensitivity(val * 0.5)
+	%LabelSensitivityValue.text = str(val)
 
 func _on_integer_scaling_toggled(toggled_on: bool):
 	PicoVideoStreamer.set_integer_scaling_enabled(toggled_on)
@@ -525,6 +538,7 @@ func _on_bg_color_picked(color: Color):
 func save_config():
 	var config = ConfigFile.new()
 	config.set_value("settings", "haptic_enabled", PicoVideoStreamer.get_haptic_enabled())
+	config.set_value("settings", "swap_zx_enabled", PicoVideoStreamer.get_swap_zx_enabled())
 	config.set_value("settings", "trackpad_sensitivity", PicoVideoStreamer.get_trackpad_sensitivity())
 	config.set_value("settings", "integer_scaling_enabled", PicoVideoStreamer.get_integer_scaling_enabled())
 	config.set_value("settings", "always_show_controls", PicoVideoStreamer.get_always_show_controls())
@@ -545,12 +559,14 @@ func load_config():
 	var err = config.load(CONFIG_PATH)
 	
 	var haptic = false
+	var swap_zx = false
 	var sensitivity = 0.5
 	var integer_scaling = true
 	var always_show = false
 	
 	if err == OK:
 		haptic = config.get_value("settings", "haptic_enabled", false)
+		swap_zx = config.get_value("settings", "swap_zx_enabled", false)
 		sensitivity = config.get_value("settings", "trackpad_sensitivity", 0.5)
 		integer_scaling = config.get_value("settings", "integer_scaling_enabled", true)
 		always_show = config.get_value("settings", "always_show_controls", false)
@@ -574,17 +590,19 @@ func load_config():
 	
 	# Apply Settings
 	PicoVideoStreamer.set_haptic_enabled(haptic)
+	PicoVideoStreamer.set_swap_zx_enabled(swap_zx)
 	PicoVideoStreamer.set_trackpad_sensitivity(sensitivity)
 	PicoVideoStreamer.set_integer_scaling_enabled(integer_scaling)
 	PicoVideoStreamer.set_always_show_controls(always_show)
 	
 	# Update UI
 	if %ToggleHaptic: %ToggleHaptic.set_pressed_no_signal(haptic)
+	if %ToggleSwapZX: %ToggleSwapZX.set_pressed_no_signal(swap_zx)
 	if %ToggleIntegerScaling: %ToggleIntegerScaling.set_pressed_no_signal(integer_scaling)
 	if %ToggleShowControls: %ToggleShowControls.set_pressed_no_signal(always_show)
 	if %SliderSensitivity:
 		%SliderSensitivity.set_value_no_signal(sensitivity) # avoid double setting
-		%LabelSensitivityValue.text = str(sensitivity).left(3)
+		%LabelSensitivityValue.text = str(sensitivity)
 		
 	# Sync other non-saved states usually comes from default checks
 	if %ToggleInputMode:
