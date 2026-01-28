@@ -238,13 +238,12 @@ void pico_send_vid_data() {
             }
         }
     }
-    // Frame Limiter re-enabled to cap at 120 FPS (8ms)
-    // This prevents the shim from consuming 100% CPU on fast devices.
-    Uint64 ticks_now = SDL_GetTicks64();
-    if (last_frame + MINFRAMEMS > ticks_now) {
-        SDL_Delay(last_frame + MINFRAMEMS - ticks_now);
-    }
-    last_frame = ticks_now;
+
+    // Uint64 ticks_now = SDL_GetTicks64();
+    // if (last_frame + MINFRAMEMS > ticks_now) {
+    //     SDL_Delay(last_frame + MINFRAMEMS - ticks_now);
+    // }
+    // last_frame = ticks_now;
 }
 
 DECLSPEC int SDLCALL SDL_UpdateWindowSurface(SDL_Window * window) {

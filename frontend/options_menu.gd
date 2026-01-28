@@ -9,10 +9,10 @@ const EDGE_THRESHOLD = 50.0
 var panel_width = 250.0
 
 var is_open: bool = false
+var audio_backend: String = "sles" # Default to sles
 var touch_start_x = 0.0
 var is_dragging = false
 var connected_controllers_dialog_scene = preload("res://connected_controllers_dialog.tscn")
-
 
 # Swipe to Open Variables
 var edge_drag_start = Vector2.ZERO
@@ -107,9 +107,13 @@ func _ready() -> void:
 		%ButtonSupport.pressed.connect(_on_support_pressed)
 	%ButtonSave.pressed.connect(save_config)
 	
-	# Accordion Toggles
-	%BtnDisplayToggle.pressed.connect(_on_section_toggled.bind(%BtnDisplayToggle, %ContainerDisplay))
 	%BtnControlsToggle.pressed.connect(_on_section_toggled.bind(%BtnControlsToggle, %ContainerControls))
+	%BtnAudioToggle.pressed.connect(_on_section_toggled.bind(%BtnAudioToggle, %ContainerAudio))
+	
+	# Connect Audio Backend Label
+	%ButtonAudioBackendLabel.pressed.connect(_on_label_pressed.bind(%ToggleAudioBackend))
+	if not %ToggleAudioBackend.toggled.is_connected(_on_audio_backend_toggled):
+		%ToggleAudioBackend.toggled.connect(_on_audio_backend_toggled)
 	
 	# Settings are applied via load_config(), no need to manually set button_pressed here if sync works
 	# But we need to ensure the UI reflects the loaded state.
@@ -235,6 +239,7 @@ func _update_layout():
 	%ContainerDisplay.add_theme_constant_override("margin_left", int(30 * scale_factor))
 	%ContainerControls.add_theme_constant_override("margin_left", int(30 * scale_factor))
 	%ContainerButtons.add_theme_constant_override("margin_left", int(30 * scale_factor))
+
 	# 2. Haptic Row
 	_style_option_row(%ButtonHaptic, %ToggleHaptic, $SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/HapticRow/WrapperHaptic, dynamic_font_size, scale_factor)
 	
@@ -261,6 +266,13 @@ func _update_layout():
 
 	# 6a. Shader Select Row
 	_style_shader_select_row(%ButtonShaderSelect, %ShaderSelect, $SlidePanel/ScrollContainer/VBoxContainer/SectionDisplay/ContainerDisplay/ContentDisplay/ShaderSelectRow/WrapperShaderSelect, dynamic_font_size, scale_factor)
+
+	# 6b. Audio Section Styles
+	%BtnAudioToggle.add_theme_font_size_override("font_size", int(dynamic_font_size * 1.1))
+	if %ContainerAudio:
+		%ContainerAudio.add_theme_constant_override("margin_left", int(30 * scale_factor))
+		
+	_style_option_row(%ButtonAudioBackendLabel, %ToggleAudioBackend, $SlidePanel/ScrollContainer/VBoxContainer/SectionAudio/ContainerAudio/ContentAudio/AudioRow/WrapperAudioBackend, dynamic_font_size, scale_factor)
 
 	# 7. Input Mode Row
 	_style_option_row(%ButtonInputMode, %ToggleInputMode, $SlidePanel/ScrollContainer/VBoxContainer/SectionControls/ContainerControls/ContentControls/InputModeRow/WrapperInputMode, dynamic_font_size, scale_factor)
@@ -573,6 +585,32 @@ func _adjust_focused_slider(direction: int):
 	if focus_owner and focus_owner is HSlider:
 		focus_owner.value += focus_owner.step * direction
 
+func _update_audio_label(is_stream: bool):
+	if %ButtonAudioBackendLabel:
+		%ButtonAudioBackendLabel.text = "TCP Stream" if is_stream else "SLES (Standard)"
+
+func _on_audio_backend_toggled(toggled_on: bool):
+	audio_backend = "stream" if toggled_on else "sles"
+	_update_audio_label(toggled_on)
+	
+	# Auto-save immediately so the setting persists for the restart
+	# We use a targeted save to avoid committing other unsaved UI changes
+	_save_audio_setting_only()
+	
+	OS.alert("App restart required for audio changes.", "Restart Required")
+
+func _save_audio_setting_only():
+	var config = ConfigFile.new()
+	# Load existing file to preserve other settings as they are ON DISK
+	# ignoring whatever changes are currently pending in the UI
+	var err = config.load(CONFIG_PATH)
+	if err != OK:
+		# If file doesn't exist, we just start fresh, which is fine
+		pass
+		
+	config.set_value("settings", "audio_backend", audio_backend)
+	config.save(CONFIG_PATH)
+
 func _navigate_focus(side: Side):
 	var current_focus = get_viewport().gui_get_focus_owner()
 	if not current_focus:
@@ -774,6 +812,7 @@ func save_config():
 	config.set_value("settings", "button_saturation", PicoVideoStreamer.get_button_saturation())
 	config.set_value("settings", "button_lightness", PicoVideoStreamer.get_button_lightness())
 	config.set_value("settings", "bg_color", %ColorPickerBG.color)
+	config.set_value("settings", "audio_backend", audio_backend)
 	config.save(CONFIG_PATH)
 	
 	# Visual Feedback
@@ -800,6 +839,7 @@ func load_config():
 	var button_hue = 0.0
 	var button_saturation = 1.0
 	var button_lightness = 1.0
+	var audio_backend_loaded = "sles"
 	
 	if err == OK:
 		haptic = config.get_value("settings", "haptic_enabled", false)
@@ -852,8 +892,17 @@ func load_config():
 		if %ColorPickerBG:
 			%ColorPickerBG.color = saved_bg
 			_on_bg_color_picked(saved_bg)
+			
+		# Load Audio Backend
+		audio_backend_loaded = config.get_value("settings", "audio_backend", "sles")
 	
 	# Apply Settings
+	audio_backend = audio_backend_loaded
+	if %ToggleAudioBackend:
+		var is_stream = (audio_backend == "stream")
+		%ToggleAudioBackend.set_pressed_no_signal(is_stream)
+		_update_audio_label(is_stream)
+	
 	PicoVideoStreamer.set_haptic_enabled(haptic)
 	PicoVideoStreamer.set_swap_zx_enabled(swap_zx)
 	PicoVideoStreamer.set_trackpad_sensitivity(sensitivity)

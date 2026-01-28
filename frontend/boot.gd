@@ -73,7 +73,7 @@ func _ready() -> void:
 	else:
 		request_storage_permission()
 
-const BOOTSTRAP_PACKAGE_VERSION = "7"
+const BOOTSTRAP_PACKAGE_VERSION = "8"
 
 func setup():
 	set_ui_state(false, false, true) # permission_ui=false, select_zip_ui=false, progress_ui=true
@@ -165,6 +165,27 @@ func setup():
 	
 	# Copy other assets (bezel, etc)
 	copy_assets_to_public_folder()
+	
+	# Enforce Audio Backend Selection
+	# Copy the correct pulse.pa based on settings
+	var config = ConfigFile.new()
+	var err = config.load("user://settings.cfg")
+	var audio_backend = "sles"
+	if err == OK:
+		audio_backend = config.get_value("settings", "audio_backend", "sles")
+	
+	print("Enforcing Audio Backend: ", audio_backend)
+	var g_source = "user://package/pulse.pa." + audio_backend
+	var g_target = "user://package/pulse.pa"
+	
+	if FileAccess.file_exists(g_source):
+		var dir = DirAccess.open("user://package")
+		if dir:
+			dir.copy(g_source, g_target)
+			print("Copied ", g_source, " to ", g_target)
+	else:
+		print("Audio backend template not found: ", g_source)
+
 	
 	# Setup is complete, go to main scene
 	get_tree().change_scene_to_file("res://main.tscn")

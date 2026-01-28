@@ -108,10 +108,30 @@ func _ready() -> void:
 	# Start Update Checker
 	_check_for_updates()
 
+	# Start Audio Streamer
+	# Load dynamically to avoid class_name issues during runtime/cache refreshes
+	# Only start if NOT using SLES (legacy backend)
+	var config = ConfigFile.new()
+	var err = config.load("user://settings.cfg")
+	var audio_backend = "sles" # Default
+	if err == OK:
+		audio_backend = config.get_value("settings", "audio_backend", "sles")
+
+	if audio_backend != "sles":
+		var audio_streamer_script = load("res://audio_streamer.gd")
+		if audio_streamer_script:
+			var audio_streamer = audio_streamer_script.new()
+			add_child(audio_streamer)
+
 func _exit_tree():
 	_thread_active = false
 	if _thread and _thread.is_started():
 		_thread.wait_to_finish()
+	
+	if metrics_logging_enabled:
+		_flush_logs()
+		if metrics_file:
+			metrics_file.close()
 
 # Shader Externalization: Load shaders with .custom file priority
 func load_external_shader(shader_name: String) -> Shader:
@@ -190,6 +210,9 @@ func _thread_function():
 					reconnect_threaded()
 		
 		elif tcp.get_status() == StreamPeerTCP.STATUS_CONNECTED:
+			# Aggressive Polling to keep internal buffers fresh
+			tcp.poll()
+			
 			# Loading spinner update
 			loading.call_deferred("set_visible", false)
 			
@@ -274,7 +297,9 @@ func _thread_function():
 
 		# Sleep to prevent burning CPU
 		if not did_work:
-			OS.delay_msec(1)
+			# High Performance Yield: Sleep 100 microseconds (0.1ms)
+			# Enough to yield CPU, but wakes up faster than msec(1)
+			OS.delay_usec(100)
 
 func reconnect_threaded():
 	tcp = StreamPeerTCP.new()
@@ -353,6 +378,17 @@ func set_im_from_data_threaded(rgba: PackedByteArray):
 	# Write data to it
 	img.set_data(128, 128, false, Image.FORMAT_RGBA8, rgba)
 	
+	# Metrics: Calculate Jitter (Frame-to-Frame Arrival Time)
+	if metrics_visible:
+		var now = Time.get_ticks_usec()
+		if metrics_last_packet_time > 0:
+			var delta_ms = (now - metrics_last_packet_time) / 1000.0
+			if _mutex:
+				_mutex.lock()
+				metrics_thread_jitter = delta_ms
+				_mutex.unlock()
+		metrics_last_packet_time = now
+	
 	# Mark as ready
 	if _mutex:
 		_mutex.lock()
@@ -398,10 +434,12 @@ func _process(delta: float) -> void:
 		latest_ready = _ready_index
 		_mutex.unlock()
 	
+	var is_new_frame = false
 	if latest_ready != -1 and latest_ready != _read_index:
 		# We have a new frame ready to show!
 		_read_index = latest_ready
 		stream_texture.update(_buffer_images[_read_index])
+		is_new_frame = true
 
 	# 2. UPDATE FPS DEBUG
 	if debug_fps_label:
@@ -456,12 +494,167 @@ func _process(delta: float) -> void:
 			_input_queue.append_array(_main_thread_input_buffer)
 			_mutex.unlock()
 		_main_thread_input_buffer.clear()
+	
+	# METRICS UPDATE
+	if metrics_visible:
+		var now = Time.get_ticks_usec()
+		var frame_delta_ms = (now - metrics_last_frame_time) / 1000.0
+		metrics_last_frame_time = now
+		
+		# Jitter calc (from thread)
+		var jitter_val = 0.0
+		if _mutex:
+			_mutex.lock()
+			jitter_val = metrics_thread_jitter
+			_mutex.unlock()
+		
+		var disp_fps = 1000.0 / max(0.1, frame_delta_ms)
+		var net_fps = 1000.0 / max(0.1, jitter_val) if jitter_val > 0 else 0.0
+		var fps_diff = net_fps - disp_fps
+		
+		# Clamp weird spikes
+		if abs(fps_diff) > 200: fps_diff = 0.0
+		
+		var is_stutter = 0.0 if is_new_frame else 1.0
+		
+		if graph_fps: graph_fps.add_value(disp_fps)
+		if graph_jitter: graph_jitter.add_value(jitter_val)
+		if graph_starvation: graph_starvation.add_value(is_stutter)
+		if graph_fps_diff: graph_fps_diff.add_value(fps_diff)
+		
+		# Data Logging
+		if metrics_logging_enabled and metrics_file:
+			# Format: Timestamp, DisplayFPS, NetJitter, IsStutter, FPSDiff
+			var line = "%d,%.2f,%.2f,%d,%.2f" % [now, disp_fps, jitter_val, int(is_stutter), fps_diff]
+			
+			metrics_buffer.append(line)
+			if metrics_buffer.size() >= METRICS_BUFFER_SIZE:
+				_flush_logs()
 
 
 func _process_packet_thread(data: PackedByteArray):
 	var im_start = len(SYNC_SEQ) + CUSTOM_BYTE_COUNT
 	var im = data.slice(im_start, im_start + DISPLAY_BYTES)
 	set_im_from_data_threaded(im)
+
+
+# --- METRICS SYSTEM ---
+var metrics_visible: bool = false
+var metrics_logging_enabled: bool = false # Log metrics to file -> Start disabled by default
+var metrics_file: FileAccess = null
+var metrics_buffer: PackedStringArray = []
+const METRICS_BUFFER_SIZE = 120 # Flush every ~2 seconds (at 60fps)
+
+var graph_fps: DebugGraph
+var graph_jitter: DebugGraph
+var graph_starvation: DebugGraph
+var graph_fps_diff: DebugGraph
+var metrics_last_frame_time: int = 0
+var metrics_last_packet_time: int = 0
+var metrics_thread_jitter: float = 0.0
+
+func _setup_metrics_display():
+	var container = VBoxContainer.new()
+	container.position = Vector2(50, 150)
+	container.size = Vector2(400, 550) # Increased height
+	
+	# FPS Graph
+	graph_fps = DebugGraph.new()
+	graph_fps.label_text = "Display FPS"
+	graph_fps.min_value = 0
+	graph_fps.max_value = 140
+	graph_fps.custom_minimum_size = Vector2(400, 100)
+	graph_fps.graph_color = Color.GREEN
+	container.add_child(graph_fps)
+	
+	# Jitter Graph (Network Inter-arrival time)
+	graph_jitter = DebugGraph.new()
+	graph_jitter.label_text = "Net Net Delta (ms)"
+	graph_jitter.min_value = 0
+	graph_jitter.max_value = 33
+	graph_jitter.custom_minimum_size = Vector2(400, 100)
+	graph_jitter.graph_color = Color.CYAN
+	container.add_child(graph_jitter)
+
+	# Starvation Graph
+	graph_starvation = DebugGraph.new()
+	graph_starvation.label_text = "Stutter (1=Dup)"
+	graph_starvation.min_value = 0
+	graph_starvation.max_value = 1.1
+	graph_starvation.custom_minimum_size = Vector2(400, 100)
+	graph_starvation.graph_color = Color.RED
+	container.add_child(graph_starvation)
+	
+	# FPS Diff Graph (Net - Display)
+	graph_fps_diff = DebugGraph.new()
+	graph_fps_diff.label_text = "FPS Diff (Net-Disp)"
+	graph_fps_diff.min_value = -30 # Allow negative if Net < Disp (unlikely but possible with weird timing)
+	graph_fps_diff.max_value = 30 # Positive means Net > Disp (Dropping frames)
+	graph_fps_diff.custom_minimum_size = Vector2(400, 100)
+	graph_fps_diff.graph_color = Color.ORANGE
+	container.add_child(graph_fps_diff)
+	
+	var cl = CanvasLayer.new()
+	cl.layer = 129
+	cl.add_child(container)
+	add_child(cl)
+	metrics_layer = cl
+	metrics_visible = true
+
+	_start_logging()
+
+func _start_logging():
+	if metrics_logging_enabled: return
+	
+	# Ensure logs directory exists
+	var logs_dir = PicoBootManager.PUBLIC_FOLDER + "/logs"
+	if not DirAccess.dir_exists_absolute(logs_dir):
+		DirAccess.make_dir_absolute(logs_dir)
+	
+	var path = logs_dir + "/metrics_log_%d.csv" % Time.get_unix_time_from_system()
+	metrics_file = FileAccess.open(path, FileAccess.WRITE)
+	if metrics_file:
+		metrics_file.store_line("Timestamp,DisplayFPS,NetJitter,IsStutter,FPSDiff")
+		metrics_logging_enabled = true
+		metrics_buffer.clear()
+		print("Metrics logging started: ", path)
+	else:
+		print("Failed to start metrics logging at ", path)
+
+func _stop_logging():
+	if metrics_logging_enabled:
+		_flush_logs()
+		if metrics_file:
+			metrics_file.close()
+			metrics_file = null
+		metrics_logging_enabled = false
+		print("Metrics logging stopped")
+
+func _flush_logs():
+	if metrics_file and metrics_buffer.size() > 0:
+		for line in metrics_buffer:
+			metrics_file.store_line(line)
+		metrics_buffer.clear()
+		metrics_file.flush()
+
+var metrics_layer: CanvasLayer = null
+
+func toggle_metrics():
+	if not metrics_visible:
+		_setup_metrics_display()
+	else:
+		# Toggle Off
+		metrics_visible = false
+		_stop_logging()
+		
+		if metrics_layer:
+			metrics_layer.queue_free()
+			metrics_layer = null
+			
+		graph_fps = null
+		graph_jitter = null
+		graph_starvation = null
+		graph_fps_diff = null
 
 const SDL_KEYMAP: Dictionary = preload("res://sdl_keymap.json").data
 
@@ -604,6 +797,10 @@ func vkb_setstate(id: String, down: bool, unicode: int = 0, echo = false):
 				return
 
 		send_key(SDL_KEYMAP[id], false, false, keys2sdlmod(held_keys))
+	
+	# Hotkey for metrics (M for Metrics)
+	if OS.is_debug_build() and id == "M" and down:
+		toggle_metrics()
 	
 
 func keymod2sdl(mod: int, key: int) -> int:

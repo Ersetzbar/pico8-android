@@ -704,6 +704,56 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
 text = "            "
 
+[node name="SectionAudio" type="VBoxContainer" parent="SlidePanel/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="BtnAudioToggle" type="Button" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionAudio"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("6_emoji")
+text = "🔽 🔊 AUDIO"
+flat = true
+alignment = 0
+
+[node name="ContainerAudio" type="MarginContainer" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionAudio"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/margin_left = 30
+
+[node name="ContentAudio" type="VBoxContainer" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionAudio/ContainerAudio"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="AudioRow" type="HBoxContainer" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionAudio/ContainerAudio/ContentAudio"]
+layout_mode = 2
+
+[node name="ButtonAudioBackendLabel" type="Button" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionAudio/ContainerAudio/ContentAudio/AudioRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 1
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+theme_override_colors/font_focus_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.8, 0.8, 0.8, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+text = "Backend (SLES/AAudio)"
+flat = true
+alignment = 0
+
+[node name="WrapperAudioBackend" type="Control" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionAudio/ContainerAudio/ContentAudio/AudioRow"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 4
+
+[node name="ToggleAudioBackend" type="CheckButton" parent="SlidePanel/ScrollContainer/VBoxContainer/SectionAudio/ContainerAudio/ContentAudio/AudioRow/WrapperAudioBackend"]
+unique_name_in_owner = true
+layout_mode = 0
+focus_mode = 0
+
 [node name="Spacer" type="Control" parent="SlidePanel/ScrollContainer/VBoxContainer"]
 layout_mode = 2
 size_flags_vertical = 3
