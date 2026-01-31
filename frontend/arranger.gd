@@ -9,6 +9,11 @@ extends Control
 var display_frame: Node2D = null
 var landscape_ui: Control = null
 var display_container: Node2D = null
+@export var zoom_minus: Button
+@export var zoom_plus: Button
+@export var zoom_label: Label
+@export var zoom_control: Control # This is the main LayoutControls VBox
+@export var zoom_inner_container: Control # This is the ZoomControl HBox unit
 
 var cached_kb_active: bool = false
 var cached_controller_connected: bool = false
@@ -16,6 +21,19 @@ var cached_controller_connected: bool = false
 var dirty: bool = true
 var last_screensize: Vector2i = Vector2i.ZERO
 var dragging_pointer_index: int = -1
+var active_touches = {}
+var initial_pinch_dist = 0.0
+var initial_scale_modifier = 1.0
+var selection_outline: ReferenceRect = null
+
+# Zoom Auto-Repeat Variables
+var held_zoom_plus: bool = false
+var held_zoom_minus: bool = false
+var zoom_repeat_timer: float = 0.0
+var zoom_repeat_delay: float = 0.0
+const ZOOM_REPEAT_INITIAL_DELAY = 0.4
+const ZOOM_REPEAT_MIN_DELAY = 0.02
+const ZOOM_REPEAT_ACCEL = 0.8
 
 signal layout_updated()
 
@@ -42,6 +60,10 @@ func update_controller_state():
 
 
 func _ready() -> void:
+	# Ensure Arranger covers screen for background gestures
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = MouseFilter.MOUSE_FILTER_PASS
+	
 	visible = false
 	var streamer = get_parent()
 	if streamer.has_signal("input_mode_changed"):
@@ -81,6 +103,28 @@ func _ready() -> void:
 	get_tree().root.size_changed.connect(_on_resize)
 	# Force initial layout check
 	_on_resize()
+
+	# Selection Outline Setup
+	selection_outline = ReferenceRect.new()
+	selection_outline.border_color = Color.RED
+	selection_outline.border_width = 2.0
+	selection_outline.editor_only = false
+	selection_outline.mouse_filter = MouseFilter.MOUSE_FILTER_IGNORE
+	selection_outline.visible = false
+	selection_outline.top_level = true # Draw in global pixels
+	add_child(selection_outline)
+	
+	if PicoVideoStreamer.instance:
+		PicoVideoStreamer.instance.control_selected.connect(_on_control_selected)
+
+	if zoom_minus:
+		zoom_minus.button_down.connect(_on_zoom_minus_down)
+		zoom_minus.button_up.connect(_on_zoom_minus_up)
+		zoom_minus.mouse_exited.connect(_on_zoom_minus_up) # Safety release
+	if zoom_plus:
+		zoom_plus.button_down.connect(_on_zoom_plus_down)
+		zoom_plus.button_up.connect(_on_zoom_plus_up)
+		zoom_plus.mouse_exited.connect(_on_zoom_plus_up) # Safety release
 
 func _setup_intent_listener():
 	var runcmd = get_tree().root.get_node_or_null("Main/runcmd")
@@ -124,28 +168,96 @@ func _on_resize():
 
 
 func _input(event: InputEvent) -> void:
-	if not PicoVideoStreamer.display_drag_enabled:
+	if not visible or not PicoVideoStreamer.display_drag_enabled:
+		active_touches.clear()
 		dragging_pointer_index = -1
 		return
 		
+	var event_index = event.index if "index" in event else 0
+	
 	if event is InputEventScreenTouch:
 		if event.pressed:
-			if dragging_pointer_index == -1:
-				if display_container and display_container.visible:
-					# Check if touch is inside the display sprite
-					# Transform global event position to local space
-					var local_pos = display_container.to_local(event.position)
-					if display_container.get_rect().has_point(local_pos):
-						dragging_pointer_index = event.index
-		elif event.index == dragging_pointer_index:
-			dragging_pointer_index = -1
+			active_touches[event_index] = event.position
 			
+			if active_touches.size() == 2:
+				# Global Pinch Start: Target the SELECTED control
+				var keys = active_touches.keys()
+				initial_pinch_dist = active_touches[keys[0]].distance_to(active_touches[keys[1]])
+				
+				var sel = PicoVideoStreamer.instance.selected_control if PicoVideoStreamer.instance else null
+				if sel == display_container:
+					initial_scale_modifier = PicoVideoStreamer.get_display_scale_modifier(PicoVideoStreamer.is_system_landscape())
+				elif sel:
+					initial_scale_modifier = sel.scale.x
+					if "original_scale" in sel:
+						initial_scale_modifier = sel.scale.x / sel.original_scale.x
+		else:
+			active_touches.erase(event_index)
+			if event_index == dragging_pointer_index:
+				dragging_pointer_index = -1
+			if active_touches.size() < 2:
+				initial_pinch_dist = 0.0
+				
 	elif event is InputEventScreenDrag:
-		if event.index == dragging_pointer_index:
-			# Calculate orientation
+		if active_touches.has(event_index):
+			active_touches[event_index] = event.position
+		
+		var sel = PicoVideoStreamer.instance.selected_control if PicoVideoStreamer.instance else null
+		
+		if active_touches.size() == 2:
+			# Multi-touch: Global Pinch Zoom
+			var keys = active_touches.keys()
+			var current_dist = active_touches[keys[0]].distance_to(active_touches[keys[1]])
+			if initial_pinch_dist > 0 and sel:
+				var zoom_factor = current_dist / initial_pinch_dist
+				var new_scale_mod = initial_scale_modifier * zoom_factor
+				new_scale_mod = clamp(new_scale_mod, 0.25, 4.0)
+				
+				if sel == display_container:
+					new_scale_mod = snapped(new_scale_mod, 0.01)
+					PicoVideoStreamer.set_display_scale_modifier(new_scale_mod, PicoVideoStreamer.is_system_landscape())
+				else:
+					new_scale_mod = snapped(new_scale_mod, 0.01)
+					if "original_scale" in sel:
+						sel.scale = sel.original_scale * new_scale_mod
+					else:
+						sel.scale = Vector2.ONE * new_scale_mod
+						
+					if sel.has_method("_save_layout"):
+						sel._save_layout()
+				
+				_update_zoom_label()
+				
+		elif active_touches.size() == 1 and event.index == dragging_pointer_index:
+			# Background Drag: Only if we started on display
 			var is_landscape_now = PicoVideoStreamer.is_system_landscape()
 			var current_offset = PicoVideoStreamer.get_display_drag_offset(is_landscape_now)
 			PicoVideoStreamer.set_display_drag_offset(current_offset + event.relative, is_landscape_now)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible or not PicoVideoStreamer.display_drag_enabled:
+		return
+		
+	var event_index = event.index if "index" in event else 0
+	
+	if event is InputEventScreenTouch and event.pressed:
+		# Selection for background/display if no button caught it
+		var hit_display = false
+		if display_container and display_container.visible:
+			var local_pos = display_container.to_local(event.position)
+			if display_container.get_rect().has_point(local_pos):
+				hit_display = true
+
+		if hit_display:
+			if PicoVideoStreamer.instance:
+				PicoVideoStreamer.instance.selected_control = display_container
+				PicoVideoStreamer.instance.control_selected.emit(display_container)
+			dragging_pointer_index = event_index
+			# No need to accept_event in unhandled, but we track dragging_pointer_index locally
+
+func _gui_input(_event: InputEvent) -> void:
+	# Keep empty or remove - background touch is handled by _unhandled_input for robustness
+	pass
 
 func _on_reset_display_pressed():
 	# Use new global reset that handles controls too
@@ -157,6 +269,29 @@ func _update_reset_button_visibility():
 
 
 func _process(_delta: float) -> void:
+	# Keep zoom_control visibility synced with drag mode
+	if zoom_control and zoom_control.visible != PicoVideoStreamer.display_drag_enabled:
+		zoom_control.visible = PicoVideoStreamer.display_drag_enabled
+		if zoom_control.visible:
+			_update_zoom_label()
+		else:
+			# Deselect when customization is toggled off
+			_clear_selection()
+		
+	# Handle Zoom Repeat
+	if held_zoom_plus or held_zoom_minus:
+		zoom_repeat_timer -= _delta
+		if zoom_repeat_timer <= 0:
+			if held_zoom_plus: _adjust_zoom(0.01)
+			if held_zoom_minus: _adjust_zoom(-0.01)
+			
+			# Accelerate
+			zoom_repeat_delay = max(ZOOM_REPEAT_MIN_DELAY, zoom_repeat_delay * ZOOM_REPEAT_ACCEL)
+			zoom_repeat_timer = zoom_repeat_delay
+		
+	if selection_outline and selection_outline.visible:
+		_update_selection_outline()
+		
 	if frames_rendered < 10:
 		frames_rendered += 1
 		# Force layout update during initial frames to settle
@@ -211,47 +346,64 @@ func _update_layout():
 	
 	# If Landscape OR Controller is connected, we target the game-only size (128x128)
 	# BUT only if this is the actual game display (has display_container)
-	var maxScale: float = 1.0
-	var _scale_factor: float = 1.0
+	var baselineScale: float = 1.0
+	var zoomScale: float = 1.0
 	
 	if (is_landscape or is_controller_connected) and display_container:
 		target_size = Vector2(128, 128)
 		target_pos = Vector2(0, 0)
-		
 		var scale_calc_size = Vector2(128, 128)
 		
-		# Only reserve space for side controls if:
-		# 1. We are physically in landscape (wide screen)
-		# 2. AND No controller is connected (so we need on-screen controls)
 		if is_landscape and not is_controller_connected:
-			# We need approx 80 pixels of "game-scaled" space on each side.
-			# 80 * 2 = 160. Total width 288.
 			scale_calc_size.x += 160
 		
 		var ratio_x = available_size.x / scale_calc_size.x
 		var ratio_y = available_size.y / scale_calc_size.y
 		var raw_scale = min(ratio_x, ratio_y)
 		
+		# Baseline Fit
 		if PicoVideoStreamer.get_integer_scaling_enabled():
-			maxScale = max(1.0, floor(raw_scale))
+			baselineScale = max(1.0, floor(raw_scale))
 		else:
-			maxScale = max(1.0, raw_scale)
+			baselineScale = max(1.0, raw_scale)
+			
+		# Effective Zoom
+		var modifier = PicoVideoStreamer.get_display_scale_modifier(is_landscape)
+		var raw_zoom = raw_scale * modifier
+		if PicoVideoStreamer.get_integer_scaling_enabled():
+			zoomScale = max(1.0, floor(raw_zoom))
+		else:
+			zoomScale = max(1.0, raw_zoom)
 	else:
-		# Standard scaling logic for portraits/menus
 		var ratio_x = available_size.x / target_size.x
 		var ratio_y = available_size.y / target_size.y
 		var raw_scale = min(ratio_x, ratio_y)
 		
 		if PicoVideoStreamer.get_integer_scaling_enabled():
-			maxScale = max(1.0, floor(raw_scale))
+			baselineScale = max(1.0, floor(raw_scale))
 		else:
-			maxScale = max(1.0, raw_scale)
+			baselineScale = max(1.0, raw_scale)
+			
+		var modifier = PicoVideoStreamer.get_display_scale_modifier(is_landscape)
+		var raw_zoom = raw_scale * modifier
+		if PicoVideoStreamer.get_integer_scaling_enabled():
+			zoomScale = max(1.0, floor(raw_zoom))
+		else:
+			zoomScale = max(1.0, raw_zoom)
 
-	self.scale = Vector2(maxScale, maxScale)
+	# 1. UI Baseline Scale (Buttons, etc.)
+	self.scale = Vector2(baselineScale, baselineScale)
 	
-	# Apply same scale to Reset Button (OverlayUI) as requested
-	if reset_button:
-		reset_button.scale = Vector2(maxScale, maxScale)
+	# Shorthand for existing logic that uses 'maxScale'
+	var maxScale = baselineScale
+	
+	# Apply same scale to Layout Controls (OverlayUI) 
+	# Reset button is a child of zoom_control, so we only scale the parent.
+	if zoom_control:
+		zoom_control.scale = Vector2(maxScale, maxScale)
+		# Ensure pivot is at the bottom-left of the container 
+		# for consistent growth regardless of content size.
+		zoom_control.pivot_offset = Vector2(0, zoom_control.size.y)
 	
 	# Compensate for Arranger zoom to keep high-res D-pad at constant physical size
 	var dpad = get_node_or_null("kbanchor/kb_gaming/Onmipad")
@@ -316,6 +468,9 @@ func _update_layout():
 	# 2. Configure Display Container (if exists)
 	if display_container:
 		display_container.centered = is_landscape
+		# Apply zooming ONLY to the display container
+		var display_zoom_relative = zoomScale / baselineScale
+		display_container.scale = Vector2(display_zoom_relative, display_zoom_relative)
 		
 		# Ensure reset button visibility is correct
 		_update_reset_button_visibility()
@@ -335,16 +490,14 @@ func _update_layout():
 			# Landscape is centered by default. 
 			# display_container.centered = true, so its local origin (0,0) is center of display.
 			# Its top-left is -(target_size/2).
-			baseline_global = (Vector2(screensize) / 2.0) - (target_size * maxScale / 2.0).floor()
+			baseline_global = (Vector2(screensize) / 2.0) - (target_size * zoomScale / 2.0).floor()
 		else:
-			# Portrait: Arranger.position + (0, target_y_base) * maxScale
-			# display_container.centered = false, so its local origin (0,0) is its top-left.
-			baseline_global = Vector2(self.position) + Vector2(0, target_y_base) * maxScale
+			# Portrait: Arranger.position + (0, target_y_base) * baselineScale
+			baseline_global = Vector2(self.position) + Vector2(0, target_y_base) * baselineScale
 		
 		# 2. Clamping
-		# Use 128x128 as the actual logical screen size for clamping, 
-		# otherwise portrait's ActiveArea (300 height) restricts movement too much.
-		var display_size_global = Vector2(128, 128) * maxScale
+		# Use zoomScale for the actual visible size of the display
+		var display_size_global = Vector2(128, 128) * zoomScale
 		
 		# We want: 0 <= baseline_global + drag_offset <= screensize - display_size_global
 		var min_offset = - baseline_global
@@ -388,3 +541,111 @@ func _update_buttons_for_mode(is_trackpad: bool):
 			x_btn.set_textures(tex_x_normal, tex_x_pressed)
 		if z_btn:
 			z_btn.set_textures(tex_o_normal, tex_o_pressed)
+
+func _on_control_selected(_control: CanvasItem):
+	selection_outline.visible = true
+	_update_selection_outline()
+	_update_zoom_label()
+
+
+func _update_selection_outline():
+	var streamer = PicoVideoStreamer.instance
+	var sel = streamer.selected_control if streamer else null
+	if not sel or not is_instance_valid(sel):
+		selection_outline.visible = false
+		return
+		
+	var global_rect: Rect2
+	if sel is Control:
+		global_rect = sel.get_global_rect()
+	elif sel is Node2D:
+		var l_rect = sel.get_rect()
+		# For centered nodes, get_rect().position is typically -size/2
+		# to_global handles the center offset correctly
+		var global_pos = sel.to_global(l_rect.position)
+		global_rect = Rect2(global_pos, l_rect.size * sel.get_global_transform().get_scale())
+		
+	# Since selection_outline is top_level, we use global pixels directly
+	selection_outline.position = global_rect.position
+	selection_outline.size = global_rect.size
+
+func _on_zoom_minus_down():
+	held_zoom_minus = true
+	zoom_repeat_delay = ZOOM_REPEAT_INITIAL_DELAY
+	zoom_repeat_timer = ZOOM_REPEAT_INITIAL_DELAY
+	_adjust_zoom(-0.01)
+
+func _on_zoom_minus_up():
+	held_zoom_minus = false
+
+func _on_zoom_plus_down():
+	held_zoom_plus = true
+	zoom_repeat_delay = ZOOM_REPEAT_INITIAL_DELAY
+	zoom_repeat_timer = ZOOM_REPEAT_INITIAL_DELAY
+	_adjust_zoom(0.01)
+
+func _on_zoom_plus_up():
+	held_zoom_plus = false
+
+func _adjust_zoom(delta: float):
+	var streamer = PicoVideoStreamer.instance
+	var sel = streamer.selected_control if streamer else null
+	if not sel or not is_instance_valid(sel): return
+	
+	var is_landscape = PicoVideoStreamer.is_system_landscape()
+	if sel == display_container:
+		var cur = PicoVideoStreamer.get_display_scale_modifier(is_landscape)
+		PicoVideoStreamer.set_display_scale_modifier(clamp(cur + delta, 0.25, 4.0), is_landscape)
+	else:
+		var cur_mod = 1.0
+		if "original_scale" in sel:
+			cur_mod = sel.scale.x / sel.original_scale.x
+		else:
+			cur_mod = sel.scale.x
+			
+		var new_mod = clamp(cur_mod + delta, 0.25, 4.0)
+		new_mod = snapped(new_mod, 0.01)
+		
+		if "original_scale" in sel:
+			sel.scale = sel.original_scale * new_mod
+		else:
+			sel.scale = Vector2.ONE * new_mod
+			
+		if sel.has_method("_save_layout"):
+			sel._save_layout()
+	
+	_update_selection_outline()
+	_update_zoom_label()
+
+func _clear_selection():
+	if PicoVideoStreamer.instance:
+		PicoVideoStreamer.instance.selected_control = null
+		PicoVideoStreamer.instance.control_selected.emit(null)
+	
+	if selection_outline:
+		selection_outline.visible = false
+	
+	_update_zoom_label()
+
+func _update_zoom_label():
+	var streamer = PicoVideoStreamer.instance
+	var sel = streamer.selected_control if streamer else null
+	
+	# Reset button is part of zoom_control which is managed in _process
+	# Inner zoom unit (+/-/label) only shows when something is selected
+	if zoom_inner_container:
+		zoom_inner_container.visible = (sel != null and is_instance_valid(sel))
+	
+	if not sel or not is_instance_valid(sel) or not zoom_label:
+		return
+	
+	var cur_scale = 1.0
+	if sel == display_container:
+		cur_scale = PicoVideoStreamer.get_display_scale_modifier(PicoVideoStreamer.is_system_landscape())
+	else:
+		if "original_scale" in sel:
+			cur_scale = sel.scale.x / sel.original_scale.x
+		else:
+			cur_scale = sel.scale.x
+			
+	zoom_label.text = "%.2fx" % cur_scale

@@ -63,10 +63,6 @@ func _on_resize():
 		# Compensate size so anchors cover the full viewport in local coordinates
 		size = get_viewport_rect().size / s
 		
-		# Inverse scale the high-res D-Pad so it stays physical size
-		if dpad:
-			var target_scale = 8.5 / s
-			dpad.scale = Vector2(target_scale, target_scale)
 	else:
 		size = get_viewport_rect().size
 

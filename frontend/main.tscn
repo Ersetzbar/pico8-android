@@ -34,7 +34,7 @@
 [ext_resource type="Texture2D" uid="uid://dlu77ynuh6dl1" path="res://assets/btn_menu_normal.png" id="49_menu_norm"]
 [ext_resource type="Texture2D" uid="uid://cts6512y2afit" path="res://assets/btn_menu_pressed.png" id="50_menu_press"]
 [ext_resource type="PackedScene" uid="uid://b6p2v8g5q4x7y" path="res://options_menu.tscn" id="170_options"]
-[ext_resource type="Script" uid="uid://b8wgg60ombjh" path="res://repositionable_control.gd" id="171_repo"]
+[ext_resource type="Script" uid="uid://bjwn18kjaicxo" path="res://repositionable_control.gd" id="171_repo"]
 
 [sub_resource type="Gradient" id="Gradient_ig7tw"]
 offsets = PackedFloat32Array(0)
@@ -200,12 +200,17 @@ sprite_frames = SubResource("SpriteFrames_0odxb")
 animation = &"dl"
 autoplay = "dl_1"
 
-[node name="Arranger" type="Control" parent="." unique_id=1758787716 node_paths=PackedStringArray("active_area", "reset_button")]
+[node name="Arranger" type="Control" parent="." unique_id=1758787716 node_paths=PackedStringArray("active_area", "reset_button", "zoom_minus", "zoom_plus", "zoom_label", "zoom_control", "zoom_inner_container")]
 layout_mode = 3
 anchors_preset = 0
 script = ExtResource("16_2cqfq")
 active_area = NodePath("ActiveArea")
-reset_button = NodePath("../OverlayUI/ResetDisplayBtn")
+reset_button = NodePath("../OverlayUI/LayoutControls/ResetDisplayBtn")
+zoom_minus = NodePath("../OverlayUI/LayoutControls/ZoomControl/MinusBtn")
+zoom_plus = NodePath("../OverlayUI/LayoutControls/ZoomControl/PlusBtn")
+zoom_label = NodePath("../OverlayUI/LayoutControls/ZoomControl/ZoomLabel")
+zoom_control = NodePath("../OverlayUI/LayoutControls")
+zoom_inner_container = NodePath("../OverlayUI/LayoutControls/ZoomControl")
 
 [node name="ActiveArea" type="ReferenceRect" parent="Arranger" unique_id=148468915]
 layout_mode = 0
@@ -941,6 +946,7 @@ texture_pressed = ExtResource("46_o_press")
 metadata/_edit_use_anchors_ = true
 
 [node name="X" parent="Arranger/kbanchor/kb_gaming" unique_id=1932826476 instance=ExtResource("20_82xsv")]
+mouse_filter = 0
 offset_left = 77.0
 offset_top = 39.0
 offset_right = 88.0
@@ -960,6 +966,7 @@ texture_pressed = ExtResource("44_x_press")
 metadata/_edit_use_anchors_ = true
 
 [node name="Onmipad" parent="Arranger/kbanchor/kb_gaming" unique_id=827209010 instance=ExtResource("41_0cp0l")]
+mouse_filter = 0
 offset_left = 3.0
 offset_top = 4.0
 offset_right = 47.0
@@ -973,15 +980,53 @@ visible = false
 
 [node name="OverlayUI" type="CanvasLayer" parent="." unique_id=61202646]
 
-[node name="ResetDisplayBtn" type="Button" parent="OverlayUI" unique_id=139397799]
+[node name="LayoutControls" type="VBoxContainer" parent="OverlayUI" unique_id=202401311]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 25.0
-offset_top = -172.0
-offset_right = 65.0
-offset_bottom = -157.0
+offset_top = -150.0
+offset_right = 50.0
+offset_bottom = -20.0
 grow_vertical = 0
+mouse_filter = 2
+theme_override_constants/separation = 5
+alignment = 2
+
+[node name="ZoomControl" type="HBoxContainer" parent="OverlayUI/LayoutControls" unique_id=202401315]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 5
+
+[node name="MinusBtn" type="Button" parent="OverlayUI/LayoutControls/ZoomControl" unique_id=202401312]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("20_d13ii")
+theme_override_font_sizes/font_size = 5
+theme_override_styles/normal = SubResource("StyleBoxFlat_reset")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_reset")
+theme_override_styles/hover = SubResource("StyleBoxFlat_reset")
+text = "-"
+
+[node name="ZoomLabel" type="Label" parent="OverlayUI/LayoutControls/ZoomControl" unique_id=202401313]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("20_d13ii")
+theme_override_font_sizes/font_size = 5
+theme_override_styles/normal = SubResource("StyleBoxEmpty_d13ii")
+text = "1.00x"
+vertical_alignment = 1
+
+[node name="PlusBtn" type="Button" parent="OverlayUI/LayoutControls/ZoomControl" unique_id=202401314]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("20_d13ii")
+theme_override_font_sizes/font_size = 5
+theme_override_styles/normal = SubResource("StyleBoxFlat_reset")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_reset")
+theme_override_styles/hover = SubResource("StyleBoxFlat_reset")
+text = "+"
+
+[node name="ResetDisplayBtn" type="Button" parent="OverlayUI/LayoutControls" unique_id=139397799]
+custom_minimum_size = Vector2(40, 15)
+layout_mode = 2
+size_flags_horizontal = 0
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_fonts/font = ExtResource("20_d13ii")
 theme_override_font_sizes/font_size = 5

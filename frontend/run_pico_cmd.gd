@@ -127,6 +127,14 @@ func _launch_pico8(target_path: String) -> void:
 			extra_bind_export = "export PROOT_EXTRA_BIND='--bind=" + parent_dir + ":/home/custom_mount'; "
 			run_arg = " -run /home/custom_mount/" + filename
 	
+	# 3. Ensure pipes exist before launching to avoid race conditions
+	var fifo_vid = pkg_path + "/tmp/pico8.vid"
+	var fifo_in = pkg_path + "/tmp/pico8.in"
+	if not FileAccess.file_exists(fifo_vid) or not FileAccess.file_exists(fifo_in):
+		print("Creating pipes from Godot...")
+		var mkfifo_cmd = "cd " + pkg_path + "; ./busybox mkdir -p tmp; ./busybox mkfifo tmp/pico8.vid tmp/pico8.in; chmod 666 tmp/pico8.vid tmp/pico8.in"
+		OS.execute(PicoBootManager.BIN_PATH + "/sh", ["-c", mkfifo_cmd])
+
 	var cmdline = env_setup + extra_bind_export + 'cd ' + pkg_path + '; LD_LIBRARY_PATH=. ./busybox ash start_pico_proot.sh' + run_arg + ' >' + PicoBootManager.PUBLIC_FOLDER + '/logs/pico_out.txt 2>' + PicoBootManager.PUBLIC_FOLDER + "/logs/pico_err.txt"
 	
 	pico_pid = OS.create_process(
@@ -302,10 +310,11 @@ func _complete_restart() -> void:
 	_kill_all_pico_processes()
 	pico_pid = null
 
-	# Cleanup temp files that might block restart (PID files, sockets, pipes)
-	# Removing the whole tmp dir content to ensure pulseaudio
+	# Cleanup temp files that might block restart (PID files, sockets)
+	# IMPORTANT: We PRESERVE the pipes (pico8.* and xdgopen) to avoid inode rotation deadlocks
 	var pkg_path = PicoBootManager.APPDATA_FOLDER + "/package"
-	var rm_cmd = "rm -rf " + pkg_path + "/tmp/* " + pkg_path + "/ptmp/*"
+	var rm_cmd = "rm -rf " + pkg_path + "/ptmp/*; " + \
+				 "find " + pkg_path + "/tmp/ -mindepth 1 -not -name 'pico8.*' -not -name 'xdgopen' -exec rm -rf {} +"
 	OS.execute(PicoBootManager.BIN_PATH + "/sh", ["-c", rm_cmd], [])
 
 	# Force TCP reset on streamer side to ensure immediate pickup

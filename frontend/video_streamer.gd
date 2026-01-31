@@ -2,6 +2,7 @@ extends Node2D
 class_name PicoVideoStreamer
 
 signal layout_reset(is_landscape: bool)
+signal control_selected(control: CanvasItem)
 
 @export var loading: AnimatedSprite2D
 @export var display: Sprite2D
@@ -36,6 +37,8 @@ const RETRY_INTERVAL: int = 200
 const READ_TIMEOUT: int = 5000
 var is_intent_session: bool = false
 var is_pico_suspended: bool = false # Track if PICO-8 process is suspended
+
+var selected_control: CanvasItem = null
 func _on_intent_session_started():
 	print("Video Streamer: Intent Session Started (Controller Mapping Updated)")
 	is_intent_session = true
@@ -85,11 +88,6 @@ func _ready() -> void:
 	print("Video Streamer: Setting up Bezel Overlay...")
 	_setup_bezel_overlay()
 
-
-	# Clean up pipes before starting thread 
-	# This prevents blocking on an old inode that the shell script might delete later
-	DirAccess.remove_absolute(PIPE_IN)
-	DirAccess.remove_absolute(PIPE_VID)
 
 	# Start TCP Thread
 	_mutex = Mutex.new()
@@ -188,7 +186,9 @@ func load_external_shader(shader_name: String) -> Shader:
 	return load(builtin_path)
 
 func _thread_function():
-	print("Pipe Thread Started")
+	print("Video Streamer: Pipe Thread Initiated")
+	# Small initial delay to let shell script finish mkfifo
+	OS.delay_msec(100)
 		
 	var buffer: PackedByteArray = PackedByteArray()
 	
@@ -215,22 +215,26 @@ func _thread_function():
 				# Input Pipe
 				if in_pipe_id == -1:
 					# Try Open (Blocking likely short if Shim opened it eager)
+					print("Pipe: Attempting to connect to Input Pipe...")
 					var pid = _applinks_plugin.pipe_open(PIPE_IN, 1) # Mode 1 = WRITE
 					if pid != -1:
 						in_pipe_id = pid
 						print("Pipe: Connected to Input Pipe (ID: ", pid, ")")
 					else:
 						# Open failed (not found?)
+						print("Pipe: Input Pipe connection failed, retrying...")
 						OS.delay_msec(500)
 
 				# Video Pipe
 				if vid_pipe_id == -1:
+					print("Pipe: Attempting to connect to Video Pipe...")
 					var pid = _applinks_plugin.pipe_open(PIPE_VID, 0) # Mode 0 = READ
 					if pid != -1:
 						vid_pipe_id = pid
 						print("Pipe: Connected to Video Pipe (ID: ", pid, ")")
 					else:
 						# Open failed
+						print("Pipe: Video Pipe connection failed/blocked, retrying...")
 						OS.delay_msec(500)
 			
 			# Check connection status
@@ -1680,6 +1684,8 @@ func get_display_rect() -> Rect2:
 static var display_drag_enabled: bool = false
 static var display_drag_offset_portrait: Vector2 = Vector2.ZERO
 static var display_drag_offset_landscape: Vector2 = Vector2.ZERO
+static var display_scale_portrait: float = 1.0
+static var display_scale_landscape: float = 1.0
 
 static var control_layout_portrait: Dictionary = {}
 static var control_layout_landscape: Dictionary = {}
@@ -1708,29 +1714,58 @@ static func set_display_drag_offset(offset: Vector2, is_landscape: bool):
 static func get_display_drag_offset(is_landscape: bool) -> Vector2:
 	return display_drag_offset_landscape if is_landscape else display_drag_offset_portrait
 
-static func set_control_pos(control_name: String, pos: Vector2, is_landscape: bool):
+static func set_display_scale_modifier(new_scale: float, is_landscape: bool):
 	if is_landscape:
-		control_layout_landscape[control_name] = pos
+		display_scale_landscape = new_scale
 	else:
-		control_layout_portrait[control_name] = pos
+		display_scale_portrait = new_scale
+	
+	if instance:
+		var arranger = instance.get_node_or_null("Arranger")
+		if arranger: arranger.dirty = true
 
-static func get_control_pos(control_name: String, is_landscape: bool) -> Variant:
+static func get_display_scale_modifier(is_landscape: bool) -> float:
+	return display_scale_landscape if is_landscape else display_scale_portrait
+
+static func set_control_layout_data(control_name: String, pos: Vector2, new_scale: float, is_landscape: bool):
+	var data = {"pos": pos, "scale": new_scale}
+	if is_landscape:
+		control_layout_landscape[control_name] = data
+	else:
+		control_layout_portrait[control_name] = data
+
+static func get_control_layout_data(control_name: String, is_landscape: bool) -> Variant:
 	if is_landscape:
 		return control_layout_landscape.get(control_name, null)
 	else:
 		return control_layout_portrait.get(control_name, null)
 
+static func get_control_pos(control_name: String, is_landscape: bool) -> Variant:
+	var data = get_control_layout_data(control_name, is_landscape)
+	if data == null: return null
+	if data is Vector2: return data # Legacy support
+	return data.get("pos", null)
+
+static func get_control_scale(control_name: String, is_landscape: bool) -> float:
+	var data = get_control_layout_data(control_name, is_landscape)
+	if data == null or data is Vector2: return 1.0
+	return data.get("scale", 1.0)
+
 static func reset_display_layout(is_landscape: bool):
 	print("Resetting Display Layout for: ", "Landscape" if is_landscape else "Portrait")
 	if is_landscape:
 		display_drag_offset_landscape = Vector2.ZERO
+		display_scale_landscape = 1.0
 		control_layout_landscape.clear()
 	else:
 		display_drag_offset_portrait = Vector2.ZERO
+		display_scale_portrait = 1.0
 		control_layout_portrait.clear()
 
 	# Force Arranger update
 	if instance:
+		instance.emit_signal("layout_reset", is_landscape)
+		
 		var arranger = instance.get_node_or_null("/root/Main/Arranger")
 		if arranger:
 			arranger.dirty = true

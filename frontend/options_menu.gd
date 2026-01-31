@@ -65,7 +65,7 @@ func _ready() -> void:
 		
 	if not %ToggleReposition.toggled.is_connected(_on_reposition_toggled):
 		%ToggleReposition.toggled.connect(_on_reposition_toggled)
-	%ButtonReposition.pressed.connect(_on_label_pressed.bind(%ToggleReposition))
+	%ButtonCustomizeLayout.pressed.connect(_on_label_pressed.bind(%ToggleReposition))
 
 
 	if not %SliderSensitivity.value_changed.is_connected(_on_sensitivity_changed):
@@ -274,7 +274,7 @@ func _update_layout():
 	_style_shader_select_row(%ButtonShaderSelect, %ShaderSelect, $SlidePanel/ScrollContainer/VBoxContainer/SectionDisplay/ContainerDisplay/ContentDisplay/ShaderSelectRow/WrapperShaderSelect, dynamic_font_size, scale_factor)
 
 	# 6b. Reposition Row
-	_style_option_row(%ButtonReposition, %ToggleReposition, $SlidePanel/ScrollContainer/VBoxContainer/SectionDisplay/ContainerDisplay/ContentDisplay/RepositionRow/WrapperReposition, dynamic_font_size, scale_factor)
+	_style_option_row(%ButtonCustomizeLayout, %ToggleReposition, $SlidePanel/ScrollContainer/VBoxContainer/SectionDisplay/ContainerDisplay/ContentDisplay/RepositionRow/WrapperReposition, dynamic_font_size, scale_factor)
 
 	# 6c. Audio Section Styles
 	%BtnAudioToggle.add_theme_font_size_override("font_size", int(dynamic_font_size * 1.1))
@@ -826,6 +826,8 @@ func save_config():
 	config.set_value("settings", "bg_color", %ColorPickerBG.color)
 	config.set_value("settings", "display_drag_offset_portrait", PicoVideoStreamer.display_drag_offset_portrait)
 	config.set_value("settings", "display_drag_offset_landscape", PicoVideoStreamer.display_drag_offset_landscape)
+	config.set_value("settings", "display_scale_portrait", PicoVideoStreamer.display_scale_portrait)
+	config.set_value("settings", "display_scale_landscape", PicoVideoStreamer.display_scale_landscape)
 	config.set_value("settings", "audio_backend", audio_backend)
 	config.set_value("settings", "control_layout_portrait", PicoVideoStreamer.control_layout_portrait)
 	config.set_value("settings", "control_layout_landscape", PicoVideoStreamer.control_layout_landscape)
@@ -858,6 +860,8 @@ func load_config():
 	var display_drag_enabled = false
 	var display_drag_offset_portrait = Vector2.ZERO
 	var display_drag_offset_landscape = Vector2.ZERO
+	var display_scale_portrait = 1.0
+	var display_scale_landscape = 1.0
 	var control_layout_portrait = {}
 	var control_layout_landscape = {}
 	var audio_backend_loaded = "sles"
@@ -894,6 +898,8 @@ func load_config():
 		# Load reposition settings
 		display_drag_offset_portrait = config.get_value("settings", "display_drag_offset_portrait", Vector2.ZERO)
 		display_drag_offset_landscape = config.get_value("settings", "display_drag_offset_landscape", Vector2.ZERO)
+		display_scale_portrait = config.get_value("settings", "display_scale_portrait", 1.0)
+		display_scale_landscape = config.get_value("settings", "display_scale_landscape", 1.0)
 		
 		control_layout_portrait = config.get_value("settings", "control_layout_portrait", {})
 		control_layout_landscape = config.get_value("settings", "control_layout_landscape", {})
@@ -953,6 +959,8 @@ func load_config():
 	PicoVideoStreamer.set_button_lightness(button_lightness)
 	PicoVideoStreamer.set_display_drag_offset(display_drag_offset_portrait, false)
 	PicoVideoStreamer.set_display_drag_offset(display_drag_offset_landscape, true)
+	PicoVideoStreamer.set_display_scale_modifier(display_scale_portrait, false)
+	PicoVideoStreamer.set_display_scale_modifier(display_scale_landscape, true)
 	
 	PicoVideoStreamer.control_layout_portrait = control_layout_portrait
 	PicoVideoStreamer.control_layout_landscape = control_layout_landscape
