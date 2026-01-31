@@ -1,4 +1,4 @@
-# PICO-8 for Android (v1.0.0)
+# PICO-8 for Android
 
 This application is a specialized frontend for the Android platform that allows you to run and play with the original PICO-8 (specifically the Raspberry Pi build) on your Android device.
 
@@ -44,6 +44,8 @@ This fork introduces several enhancements to improve the experience on Android d
 *   **Integrated shaders:** try to one of the integrated shaders to see if you like it more than the original output. They can be modified in /Documents/pico8/shaders . Copy one of the existing rename it in [name].custom.gslang, it will be loaded next time you select it from the menu, without need to restart. The format is Godot shader language, not the standard slang.
 *   **Bezel support:** you can activate a bezel around the pico8 screen, and personalize it changing the PNG in /Documents/pico9/bezel.png. Just rember to leave a square transparent space where the video should be.
 *   **Custom Color Calibration:** Take control over the visual profile by adjusting scolor parameters to your preference.
+*   **Custom Layout adjustements:** Move and zoom the on screen controls to afjust them to your preferences
+*   **Controller mapping:** If you have problems with how the button are recognized on your controller use the new controller mapping feature. Check the wiki for more details.
 
 
 ## 📂 Project Structure
@@ -53,7 +55,7 @@ This fork introduces several enhancements to improve the experience on Android d
 
 ## 🛠️ Building
 ### Godot Frontend
-1. Download [Godot](https://godotengine.org) version ≥4.4.1.
+1. Download [Godot](https://godotengine.org) version ≥4.6.
 2. Put `package.dat` from Releases in the project ~~or build it from bootstrap/ (soon)~~; this is the bootstrap package and is pretty essential
 3. In Godot, **Project > Install Android Build Template**
 4. then just do the normal **Project > Export**
