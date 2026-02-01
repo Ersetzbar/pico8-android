@@ -72,10 +72,10 @@ func _on_applinks_data_received(data: String) -> void:
 		print("Restart already in progress (State: ", restart_state, "). Ignoring concurrent intent.")
 		return
 
-	# Debounce: Ignore duplicate intents arriving within 5 seconds
+	# Debounce: Ignore duplicate intents arriving 
 	var current_time = Time.get_ticks_msec()
-	if data == last_received_data and (current_time - last_received_time) < 5000:
-		print("Duplicate/frequent intent ignored.")
+	if data == last_received_data:
+		print("Ignoring duplicate/redundant intent data.")
 		return
 		
 	last_received_data = data
