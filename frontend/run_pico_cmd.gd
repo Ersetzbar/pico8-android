@@ -125,7 +125,7 @@ func _launch_pico8(target_path: String) -> void:
 			
 			var filename = _escape_filename_for_shell(target_path.get_file())
 			extra_bind_export = "export PROOT_EXTRA_BIND='--bind=" + parent_dir + ":/home/custom_mount'; "
-			run_arg = " -run /home/custom_mount/" + filename
+			run_arg = " -root_path /home/custom_mount/.multicarts -run /home/custom_mount/" + filename
 	
 	# 3. Ensure pipes exist before launching to avoid race conditions
 	var fifo_vid = pkg_path + "/tmp/pico8.vid"
